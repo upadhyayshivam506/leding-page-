@@ -3,7 +3,13 @@
     <h2>{{page_title}}</h2>
 </section>
 
-<section class="mapping-grid">
+<section class="mapping-stepper" data-stepper data-current-step="{{mapping_step}}">
+    <div class="mapping-step"><span>1</span><strong>Upload</strong></div>
+    <div class="mapping-step"><span>2</span><strong>Region</strong></div>
+    <div class="mapping-step"><span>3</span><strong>Assign</strong></div>
+</section>
+
+<section class="mapping-grid mapping-grid--preview" data-mapping-preview data-region-url="{{mapping_region_url}}">
     <article class="info-panel mapping-summary-card">
         <p class="hero-label">Uploaded file</p>
         <h3>{{uploaded_file_name}}</h3>
@@ -11,35 +17,41 @@
             <div><span>Uploaded at</span><strong>{{uploaded_file_time}}</strong></div>
             <div><span>Type</span><strong>{{uploaded_file_type}}</strong></div>
             <div><span>Size</span><strong>{{uploaded_file_size}}</strong></div>
+            <div><span>Total records</span><strong data-total-records>0</strong></div>
+        </div>
+        <div class="mapping-highlight">
+            <span>Key fields</span>
+            <strong data-key-fields>Region, Name, Email, Phone, Course, City, State</strong>
         </div>
     </article>
 
     <article class="table-panel mapping-table-panel">
         <div class="panel-head panel-head--table">
             <div>
-                <h3>Column Mapping</h3>
-                <p class="table-subtext">Dummy mapping is shown for now. After this step, the uploaded file would normally be processed into leads.</p>
+                <h3>Uploaded Lead Preview</h3>
+                <p class="table-subtext">Frontend-only preview using mock/static lead rows linked to the uploaded file.</p>
             </div>
-            <span class="panel-chip">Sample mapping</span>
+            <span class="panel-chip">Preview</span>
         </div>
         <div class="table-responsive">
             <table class="table admin-table align-middle mb-0">
                 <thead>
                     <tr>
-                        <th>Excel Column</th>
-                        <th>Mapped Variable</th>
+                        <th>Lead ID</th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Phone</th>
+                        <th>Course</th>
+                        <th>Region</th>
+                        <th>City</th>
+                        <th>State</th>
                     </tr>
                 </thead>
-                <tbody>
-                    <tr><td>Column A</td><td>lead_id</td></tr>
-                    <tr><td>Column B</td><td>name</td></tr>
-                    <tr><td>Column C</td><td>email</td></tr>
-                    <tr><td>Column D</td><td>phone</td></tr>
-                    <tr><td>Column E</td><td>course</td></tr>
-                    <tr><td>Column F</td><td>city</td></tr>
-                    <tr><td>Column G</td><td>state</td></tr>
-                </tbody>
+                <tbody data-preview-body></tbody>
             </table>
+        </div>
+        <div class="mapping-actions">
+            <button type="button" class="btn dashboard-logout" data-mapping-next>Next</button>
         </div>
     </article>
 </section>

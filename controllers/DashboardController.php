@@ -32,7 +32,7 @@ final class DashboardController
             'title' => e('Leads'),
             'page_kicker' => e('Lead workspace'),
             'page_title' => e('Leads'),
-            'page_description' => e('Upload lead files, review dummy lead rows, and continue to the mapping screen after selecting an Excel or CSV file.'),
+            'page_description' => e('Upload lead files, review dummy lead rows, and continue to the mapping flow after selecting an Excel or CSV file.'),
             'flash_alert' => render_alert(flash(), 'dashboard-alert'),
             'page_action' => $this->uploadButtonHtml(),
         ]);
@@ -87,31 +87,67 @@ final class DashboardController
             'extension' => strtoupper($extension),
         ];
 
-        flash('File uploaded successfully. Continue with column mapping.', 'success');
+        flash('File uploaded successfully. Review the preview and continue to the next step.', 'success');
         redirect('/leads/mapping');
     }
 
     public function mapping(): void
     {
         $user = $this->guard();
-        $upload = $_SESSION['last_uploaded_lead_file'] ?? null;
-
-        if (!is_array($upload)) {
-            flash('Upload a lead file first to open the mapping page.');
-            redirect('/leads');
-        }
+        $upload = $this->uploadedFileOrRedirect();
 
         $this->renderAdminPage($user, 'leads', 'dashboard/pages/mapping', [
-            'title' => e('Column Mapping'),
-            'page_kicker' => e('Lead mapping'),
-            'page_title' => e('Column Mapping'),
-            'page_description' => e('Review the uploaded file and map Excel columns to your lead variables before processing records.'),
+            'title' => e('Lead Mapping'),
+            'page_kicker' => e('Step 1 of 3'),
+            'page_title' => e('Lead Mapping'),
+            'page_description' => e('Upload preview and summary review. Confirm the mock lead data before moving to region grouping.'),
             'flash_alert' => render_alert(flash(), 'dashboard-alert'),
             'page_action' => '<a href="' . e(app_url('leads')) . '" class="panel-link topbar-action-link">Back to Leads</a>',
             'uploaded_file_name' => e((string) ($upload['original_name'] ?? '')),
             'uploaded_file_time' => e((string) ($upload['uploaded_at'] ?? '')),
             'uploaded_file_type' => e((string) ($upload['extension'] ?? '')),
             'uploaded_file_size' => e(number_format(((int) ($upload['size'] ?? 0)) / 1024, 2) . ' KB'),
+            'mapping_step' => 'preview',
+            'mapping_region_url' => e(app_url('leads/mapping/region')),
+            'mapping_api_url' => e(app_url('leads/mapping/region/api-colleagues')),
+        ]);
+    }
+
+    public function mappingRegion(): void
+    {
+        $user = $this->guard();
+        $upload = $this->uploadedFileOrRedirect();
+
+        $this->renderAdminPage($user, 'leads', 'dashboard/pages/mapping-region', [
+            'title' => e('Region Mapping'),
+            'page_kicker' => e('Step 2 of 3'),
+            'page_title' => e('Region Grouping'),
+            'page_description' => e('Mock lead data is grouped by region here so you can review the region-wise split before assigning colleagues.'),
+            'flash_alert' => '',
+            'page_action' => '<a href="' . e(app_url('leads/mapping')) . '" class="panel-link topbar-action-link">Back</a>',
+            'uploaded_file_name' => e((string) ($upload['original_name'] ?? '')),
+            'mapping_step' => 'region',
+            'mapping_region_url' => e(app_url('leads/mapping/region')),
+            'mapping_api_url' => e(app_url('leads/mapping/region/api-colleagues')),
+        ]);
+    }
+
+    public function mappingApiColleagues(): void
+    {
+        $user = $this->guard();
+        $upload = $this->uploadedFileOrRedirect();
+
+        $this->renderAdminPage($user, 'leads', 'dashboard/pages/mapping-api-colleagues', [
+            'title' => e('Assign Colleagues'),
+            'page_kicker' => e('Step 3 of 3'),
+            'page_title' => e('Assign Region Colleagues'),
+            'page_description' => e('Select a colleague for each region. This step uses mock data and client-side state only.'),
+            'flash_alert' => '',
+            'page_action' => '<a href="' . e(app_url('leads/mapping/region')) . '" class="panel-link topbar-action-link">Back</a>',
+            'uploaded_file_name' => e((string) ($upload['original_name'] ?? '')),
+            'mapping_step' => 'assign',
+            'mapping_region_url' => e(app_url('leads/mapping/region')),
+            'mapping_api_url' => e(app_url('leads/mapping/region/api-colleagues')),
         ]);
     }
 
@@ -156,6 +192,18 @@ final class DashboardController
         return $this->auth->user() ?? [];
     }
 
+    private function uploadedFileOrRedirect(): array
+    {
+        $upload = $_SESSION['last_uploaded_lead_file'] ?? null;
+
+        if (!is_array($upload)) {
+            flash('Upload a lead file first to open the mapping flow.');
+            redirect('/leads');
+        }
+
+        return $upload;
+    }
+
     private function uploadButtonHtml(): string
     {
         return '<form action="' . e(app_url('leads/upload')) . '" method="post" enctype="multipart/form-data" class="upload-form" data-upload-form>'
@@ -186,6 +234,9 @@ final class DashboardController
             'uploaded_file_time' => '',
             'uploaded_file_type' => '',
             'uploaded_file_size' => '',
+            'mapping_step' => '',
+            'mapping_region_url' => e(app_url('leads/mapping/region')),
+            'mapping_api_url' => e(app_url('leads/mapping/region/api-colleagues')),
         ];
 
         return array_merge($base, $overrides);

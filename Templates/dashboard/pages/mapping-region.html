@@ -1,0 +1,19 @@
+﻿<section class="page-heading">
+    <p class="hero-label">{{page_kicker}}</p>
+    <h2>{{page_title}}</h2>
+</section>
+
+<section class="mapping-stepper" data-stepper data-current-step="{{mapping_step}}">
+    <div class="mapping-step"><span>1</span><strong>Upload</strong></div>
+    <div class="mapping-step"><span>2</span><strong>Region</strong></div>
+    <div class="mapping-step"><span>3</span><strong>Assign</strong></div>
+</section>
+
+<section class="mapping-region-page" data-region-grouping data-api-url="{{mapping_api_url}}">
+    <div class="mapping-region-summary" data-region-summary-cards></div>
+    <div class="region-groups" data-region-groups></div>
+    <div class="mapping-actions mapping-actions--footer">
+        <a href="{{leads_url}}" class="panel-link topbar-action-link">Back to Leads</a>
+        <button type="button" class="btn dashboard-logout" data-confirm-assign>Confirm &amp; Assign</button>
+    </div>
+</section>

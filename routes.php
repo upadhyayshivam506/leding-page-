@@ -14,6 +14,8 @@ return [
     'GET /leads' => [DashboardController::class, 'leads'],
     'POST /leads/upload' => [DashboardController::class, 'uploadLeadFile'],
     'GET /leads/mapping' => [DashboardController::class, 'mapping'],
+    'GET /leads/mapping/region' => [DashboardController::class, 'mappingRegion'],
+    'GET /leads/mapping/region/api-colleagues' => [DashboardController::class, 'mappingApiColleagues'],
     'GET /api-settings' => [DashboardController::class, 'apiSettings'],
     'GET /system-config' => [DashboardController::class, 'systemConfig'],
 ];
