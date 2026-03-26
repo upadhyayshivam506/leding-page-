@@ -27,12 +27,91 @@ final class DashboardController
     public function leads(): void
     {
         $user = $this->guard();
+
         $this->renderAdminPage($user, 'leads', 'dashboard/pages/leads', [
             'title' => e('Leads'),
             'page_kicker' => e('Lead workspace'),
             'page_title' => e('Leads'),
-            'page_description' => e('This page will handle file uploads, Excel-to-variable mapping, search, pagination, and lead summaries.'),
-            'flash_alert' => '',
+            'page_description' => e('Upload lead files, review dummy lead rows, and continue to the mapping screen after selecting an Excel or CSV file.'),
+            'flash_alert' => render_alert(flash(), 'dashboard-alert'),
+            'page_action' => $this->uploadButtonHtml(),
+        ]);
+    }
+
+    public function uploadLeadFile(): void
+    {
+        $this->guard();
+
+        if (!isset($_FILES['lead_file']) || !is_array($_FILES['lead_file'])) {
+            flash('Please choose a file before uploading.');
+            redirect('/leads');
+        }
+
+        $file = $_FILES['lead_file'];
+        $fileName = (string) ($file['name'] ?? '');
+        $tmpName = (string) ($file['tmp_name'] ?? '');
+        $error = (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE);
+        $size = (int) ($file['size'] ?? 0);
+
+        if ($error !== UPLOAD_ERR_OK || $fileName === '' || $tmpName === '') {
+            flash('File upload failed. Please try again.');
+            redirect('/leads');
+        }
+
+        $extension = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+        $allowed = ['xls', 'xlsx', 'csv'];
+
+        if (!in_array($extension, $allowed, true)) {
+            flash('Only XLS, XLSX, and CSV files are allowed.');
+            redirect('/leads');
+        }
+
+        $uploadDir = base_path('uploads');
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0777, true);
+        }
+
+        $storedName = uniqid('lead_', true) . '.' . $extension;
+        $destination = $uploadDir . '/' . $storedName;
+
+        if (!move_uploaded_file($tmpName, $destination)) {
+            flash('Unable to store the uploaded file on the server.');
+            redirect('/leads');
+        }
+
+        $_SESSION['last_uploaded_lead_file'] = [
+            'original_name' => $fileName,
+            'stored_name' => $storedName,
+            'uploaded_at' => date('Y-m-d H:i:s'),
+            'size' => $size,
+            'extension' => strtoupper($extension),
+        ];
+
+        flash('File uploaded successfully. Continue with column mapping.', 'success');
+        redirect('/leads/mapping');
+    }
+
+    public function mapping(): void
+    {
+        $user = $this->guard();
+        $upload = $_SESSION['last_uploaded_lead_file'] ?? null;
+
+        if (!is_array($upload)) {
+            flash('Upload a lead file first to open the mapping page.');
+            redirect('/leads');
+        }
+
+        $this->renderAdminPage($user, 'leads', 'dashboard/pages/mapping', [
+            'title' => e('Column Mapping'),
+            'page_kicker' => e('Lead mapping'),
+            'page_title' => e('Column Mapping'),
+            'page_description' => e('Review the uploaded file and map Excel columns to your lead variables before processing records.'),
+            'flash_alert' => render_alert(flash(), 'dashboard-alert'),
+            'page_action' => '<a href="' . e(app_url('leads')) . '" class="panel-link topbar-action-link">Back to Leads</a>',
+            'uploaded_file_name' => e((string) ($upload['original_name'] ?? '')),
+            'uploaded_file_time' => e((string) ($upload['uploaded_at'] ?? '')),
+            'uploaded_file_type' => e((string) ($upload['extension'] ?? '')),
+            'uploaded_file_size' => e(number_format(((int) ($upload['size'] ?? 0)) / 1024, 2) . ' KB'),
         ]);
     }
 
@@ -77,6 +156,13 @@ final class DashboardController
         return $this->auth->user() ?? [];
     }
 
+    private function uploadButtonHtml(): string
+    {
+        return '<form action="' . e(app_url('leads/upload')) . '" method="post" enctype="multipart/form-data" class="upload-form" data-upload-form>'
+            . '<label class="panel-link topbar-action-link upload-trigger">Upload Excel File<input type="file" name="lead_file" accept=".xls,.xlsx,.csv" class="d-none" data-upload-input></label>'
+            . '</form>';
+    }
+
     private function layoutData(array $user, string $activePage, array $overrides = []): array
     {
         $base = [
@@ -95,6 +181,11 @@ final class DashboardController
             'api_settings_active' => $activePage === 'api-settings' ? 'is-active' : '',
             'system_config_active' => $activePage === 'system-config' ? 'is-active' : '',
             'flash_alert' => '',
+            'page_action' => '',
+            'uploaded_file_name' => '',
+            'uploaded_file_time' => '',
+            'uploaded_file_type' => '',
+            'uploaded_file_size' => '',
         ];
 
         return array_merge($base, $overrides);

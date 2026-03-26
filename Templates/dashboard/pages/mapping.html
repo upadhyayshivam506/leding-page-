@@ -1,0 +1,45 @@
+﻿<section class="page-heading">
+    <p class="hero-label">{{page_kicker}}</p>
+    <h2>{{page_title}}</h2>
+</section>
+
+<section class="mapping-grid">
+    <article class="info-panel mapping-summary-card">
+        <p class="hero-label">Uploaded file</p>
+        <h3>{{uploaded_file_name}}</h3>
+        <div class="mapping-summary-list">
+            <div><span>Uploaded at</span><strong>{{uploaded_file_time}}</strong></div>
+            <div><span>Type</span><strong>{{uploaded_file_type}}</strong></div>
+            <div><span>Size</span><strong>{{uploaded_file_size}}</strong></div>
+        </div>
+    </article>
+
+    <article class="table-panel mapping-table-panel">
+        <div class="panel-head panel-head--table">
+            <div>
+                <h3>Column Mapping</h3>
+                <p class="table-subtext">Dummy mapping is shown for now. After this step, the uploaded file would normally be processed into leads.</p>
+            </div>
+            <span class="panel-chip">Sample mapping</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table admin-table align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Excel Column</th>
+                        <th>Mapped Variable</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td>Column A</td><td>lead_id</td></tr>
+                    <tr><td>Column B</td><td>name</td></tr>
+                    <tr><td>Column C</td><td>email</td></tr>
+                    <tr><td>Column D</td><td>phone</td></tr>
+                    <tr><td>Column E</td><td>course</td></tr>
+                    <tr><td>Column F</td><td>city</td></tr>
+                    <tr><td>Column G</td><td>state</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </article>
+</section>

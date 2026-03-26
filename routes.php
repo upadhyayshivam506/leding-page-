@@ -12,6 +12,8 @@ return [
     'POST /logout' => [AuthController::class, 'logout'],
     'GET /dashboard' => [DashboardController::class, 'index'],
     'GET /leads' => [DashboardController::class, 'leads'],
+    'POST /leads/upload' => [DashboardController::class, 'uploadLeadFile'],
+    'GET /leads/mapping' => [DashboardController::class, 'mapping'],
     'GET /api-settings' => [DashboardController::class, 'apiSettings'],
     'GET /system-config' => [DashboardController::class, 'systemConfig'],
 ];

@@ -1321,3 +1321,52 @@ a {
 .sidebar-user small {
     font-size: 0.82rem;
 }
+
+.topbar-action-link,
+.upload-trigger {
+    cursor: pointer;
+    border: 0;
+}
+
+.leads-table-panel {
+    margin-top: 8px;
+}
+
+.mapping-grid {
+    display: grid;
+    gap: 24px;
+    padding: 0 32px 32px;
+}
+
+.mapping-summary-card,
+.mapping-table-panel {
+    margin: 0;
+}
+
+.mapping-summary-list {
+    display: grid;
+    gap: 14px;
+    margin-top: 18px;
+}
+
+.mapping-summary-list div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 14px 16px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(247, 245, 255, 0.78);
+}
+
+.mapping-summary-list strong {
+    color: #fff;
+}
+
+@media (max-width: 991.98px) {
+    .mapping-grid {
+        padding-left: 22px;
+        padding-right: 22px;
+    }
+}
