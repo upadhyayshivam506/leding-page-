@@ -1,37 +1,23 @@
-﻿<section class="page-heading">
+<section class="page-heading">
     <p class="hero-label">{{page_kicker}}</p>
     <h2>{{page_title}}</h2>
 </section>
 
-<section class="table-panel leads-table-panel">
+<section class="table-panel leads-table-panel" data-leads-table>
     <div class="panel-head panel-head--table">
         <div>
             <h3>Lead Summary Table</h3>
-            <p class="table-subtext">Dummy lead rows are shown here for the current UI. After upload, you will be redirected to the mapping page.</p>
+            <p class="table-subtext">Uploaded lead rows are shown below with pagination at 20 rows per page.</p>
         </div>
-        <span class="panel-chip">Showing 1-6 of 6 leads</span>
+        <span class="panel-chip" data-table-count>{{lead_total_records}} leads</span>
     </div>
     <div class="table-responsive">
         <table class="table admin-table align-middle mb-0">
-            <thead>
-                <tr>
-                    <th>Lead ID</th>
-                    <th>Name</th>
-                    <th>Email</th>
-                    <th>Phone</th>
-                    <th>Course</th>
-                    <th>City</th>
-                    <th>State</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr><td>LD1001</td><td>Rahul Sharma</td><td>rahul@gmail.com</td><td>9876543210</td><td>MBA</td><td>Bangalore</td><td>Karnataka</td></tr>
-                <tr><td>LD1002</td><td>Priya Singh</td><td>priya@gmail.com</td><td>9823412451</td><td>BCA</td><td>Delhi</td><td>Delhi</td></tr>
-                <tr><td>LD1003</td><td>Ankit Verma</td><td>ankit@gmail.com</td><td>9765432108</td><td>B.Tech</td><td>Jaipur</td><td>Rajasthan</td></tr>
-                <tr><td>LD1004</td><td>Sneha Patel</td><td>sneha@gmail.com</td><td>9988776655</td><td>MCA</td><td>Pune</td><td>Maharashtra</td></tr>
-                <tr><td>LD1005</td><td>Aditya Mehta</td><td>aditya@gmail.com</td><td>9123456780</td><td>BBA</td><td>Ahmedabad</td><td>Gujarat</td></tr>
-                <tr><td>LD1006</td><td>Nikita Rao</td><td>nikita@gmail.com</td><td>9012345678</td><td>MBA</td><td>Hyderabad</td><td>Telangana</td></tr>
-            </tbody>
+            <thead data-table-head></thead>
+            <tbody data-table-body></tbody>
         </table>
     </div>
+    <div class="table-pagination" data-table-pagination></div>
+    <script type="application/json" data-table-rows>{{lead_rows_json}}</script>
+    <script type="application/json" data-table-headers>{{lead_headers_json}}</script>
 </section>

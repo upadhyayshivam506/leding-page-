@@ -1,4 +1,4 @@
-﻿<section class="page-heading">
+<section class="page-heading">
     <p class="hero-label">{{page_kicker}}</p>
     <h2>{{page_title}}</h2>
 </section>
@@ -13,10 +13,11 @@
     <div class="assignment-grid" data-assignment-grid></div>
     <div class="assignment-success d-none" data-assignment-success>
         <h3>Leads successfully assigned!</h3>
-        <p>Your mock region-to-colleague mapping has been saved in browser state for this frontend flow.</p>
+        <p>The selected colleague mapping is saved in browser state for this flow until backend API integration is added.</p>
     </div>
     <div class="mapping-actions mapping-actions--footer">
         <a href="{{mapping_region_url}}" class="panel-link topbar-action-link">Back</a>
         <button type="button" class="btn dashboard-logout" data-assignment-submit>Submit</button>
     </div>
+    <script type="application/json" data-assignment-summary>{{region_summary_json}}</script>
 </section>

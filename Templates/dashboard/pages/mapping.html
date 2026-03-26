@@ -1,4 +1,4 @@
-﻿<section class="page-heading">
+<section class="page-heading">
     <p class="hero-label">{{page_kicker}}</p>
     <h2>{{page_title}}</h2>
 </section>
@@ -21,37 +21,29 @@
         </div>
         <div class="mapping-highlight">
             <span>Key fields</span>
-            <strong data-key-fields>Region, Name, Email, Phone, Course, City, State</strong>
+            <strong data-key-fields>Loading uploaded columns...</strong>
+        </div>
+        <div class="mapping-actions mapping-actions--card">
+            <button type="button" class="btn dashboard-logout" data-mapping-next>Next</button>
         </div>
     </article>
 
-    <article class="table-panel mapping-table-panel">
+    <article class="table-panel mapping-table-panel" data-preview-table>
         <div class="panel-head panel-head--table">
             <div>
                 <h3>Uploaded Lead Preview</h3>
-                <p class="table-subtext">Frontend-only preview using mock/static lead rows linked to the uploaded file.</p>
+                <p class="table-subtext">Uploaded rows are shown below with pagination at 20 rows per page.</p>
             </div>
-            <span class="panel-chip">Preview</span>
+            <span class="panel-chip" data-preview-count>0 rows</span>
         </div>
         <div class="table-responsive">
-            <table class="table admin-table align-middle mb-0">
-                <thead>
-                    <tr>
-                        <th>Lead ID</th>
-                        <th>Name</th>
-                        <th>Email</th>
-                        <th>Phone</th>
-                        <th>Course</th>
-                        <th>Region</th>
-                        <th>City</th>
-                        <th>State</th>
-                    </tr>
-                </thead>
+            <table class="table admin-table align-middle mb-0" data-upload-preview-table>
+                <thead data-preview-head></thead>
                 <tbody data-preview-body></tbody>
             </table>
         </div>
-        <div class="mapping-actions">
-            <button type="button" class="btn dashboard-logout" data-mapping-next>Next</button>
-        </div>
+        <div class="table-pagination" data-preview-pagination></div>
+        <script type="application/json" data-preview-rows>{{lead_rows_json}}</script>
+        <script type="application/json" data-preview-headers>{{lead_headers_json}}</script>
     </article>
 </section>

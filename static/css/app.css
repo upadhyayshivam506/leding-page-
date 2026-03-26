@@ -1550,3 +1550,57 @@ a {
         padding-right: 22px;
     }
 }
+
+.mapping-summary-card {
+    display: flex;
+    flex-direction: column;
+}
+
+.mapping-actions--card {
+    margin-top: auto;
+    padding-top: 20px;
+}
+
+.table-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 20px 30px 26px;
+}
+
+.table-page-btn {
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.05);
+    color: #f7f5ff;
+    border-radius: 12px;
+    padding: 10px 14px;
+    font-size: 0.92rem;
+    font-weight: 600;
+}
+
+.table-page-btn:hover:not(:disabled),
+.table-page-btn.is-active {
+    background: rgba(166, 109, 255, 0.2);
+    border-color: rgba(166, 109, 255, 0.45);
+}
+
+.table-page-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.table-empty-state {
+    text-align: center;
+    color: rgba(247, 245, 255, 0.72);
+    padding: 28px 18px;
+}
+
+@media (max-width: 575.98px) {
+    .table-pagination {
+        justify-content: flex-start;
+        padding-left: 18px;
+        padding-right: 18px;
+    }
+}
