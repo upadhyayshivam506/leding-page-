@@ -4,9 +4,35 @@ declare(strict_types=1);
 
 namespace Services;
 
+use Models\AdminUser;
+use PDOException;
+
 final class AuthService
 {
+    public function __construct(private readonly AdminUser $adminUser = new AdminUser())
+    {
+    }
+
     public function attempt(string $email, string $password): bool
+    {
+        try {
+            $admin = $this->adminUser->findByEmail($email);
+        } catch (PDOException) {
+            return $this->attemptEnvFallback($email, $password);
+        }
+
+        if ($admin !== null) {
+            $storedPassword = (string) ($admin['password'] ?? '');
+
+            if ($storedPassword !== '' && password_verify($password, $storedPassword)) {
+                return true;
+            }
+        }
+
+        return $this->attemptEnvFallback($email, $password);
+    }
+
+    private function attemptEnvFallback(string $email, string $password): bool
     {
         $configuredEmail = env('ADMIN_EMAIL');
         $configuredPassword = env('ADMIN_PASSWORD');

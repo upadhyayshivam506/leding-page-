@@ -8,6 +8,7 @@ spl_autoload_register(static function (string $class): void {
     $prefixes = [
         'Config\\' => __DIR__,
         'Controllers\\' => dirname(__DIR__) . '/controllers',
+        'Models\\' => dirname(__DIR__) . '/models',
         'Services\\' => dirname(__DIR__) . '/services',
     ];
 

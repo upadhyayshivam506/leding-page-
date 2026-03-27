@@ -4,36 +4,44 @@ declare(strict_types=1);
 
 namespace Controllers;
 
+use Models\Student;
+use PDOException;
 use Services\AuthService;
 
 final class DashboardController
 {
-    public function __construct(private readonly AuthService $auth = new AuthService())
+    public function __construct(
+        private readonly AuthService $auth = new AuthService(),
+        private readonly Student $students = new Student()
+    )
     {
     }
 
     public function index(): void
     {
         $user = $this->guard();
+        $stats = $this->studentStats();
         $this->renderAdminPage($user, 'dashboard', 'dashboard/pages/index', [
             'title' => e('Dashboard'),
             'page_kicker' => e('Overview'),
             'page_title' => e('Dashboard'),
-            'page_description' => e('Track uploads, monitor delivery performance, and review the most recent file activity at a glance.'),
+            'page_description' => e('Track uploaded student data, monitor totals, and review the most recent file activity at a glance.'),
             'flash_alert' => render_alert(flash(), 'dashboard-alert'),
+            'total_students' => e((string) $stats['total_students']),
+            'total_uploaded_files' => e((string) $stats['total_uploaded_files']),
         ]);
     }
 
     public function leads(): void
     {
         $user = $this->guard();
-        $leadData = $this->uploadedLeadData();
+        $leadData = $this->leadDataForView();
 
         $this->renderAdminPage($user, 'leads', 'dashboard/pages/leads', [
             'title' => e('Leads'),
             'page_kicker' => e('Lead workspace'),
             'page_title' => e('Leads'),
-            'page_description' => e('Upload lead files, review uploaded lead rows, and continue through the mapping flow with the same dataset.'),
+            'page_description' => e('Upload lead files, save students into MySQL, and review the stored rows from the database.'),
             'flash_alert' => render_alert(flash(), 'dashboard-alert'),
             'page_action' => $this->uploadButtonHtml(),
             'lead_rows_json' => $this->json($leadData['rows']),
@@ -90,9 +98,20 @@ final class DashboardController
             'size' => $size,
             'extension' => strtoupper($extension),
         ];
-        $_SESSION['uploaded_lead_data'] = $this->parseUploadedLeadData($destination, $extension);
+        $leadData = $this->parseUploadedLeadData($destination, $extension);
+        $_SESSION['uploaded_lead_data'] = $leadData;
 
-        flash('File uploaded successfully. Review the preview and continue to the next step.', 'success');
+        try {
+            $inserted = $this->students->insertMany(
+                $this->studentsPayload($leadData['rows']),
+                $fileName
+            );
+        } catch (PDOException) {
+            flash('File uploaded, but MySQL insert failed. Check the students table and database settings.');
+            redirect('/leads');
+        }
+
+        flash('File uploaded successfully. ' . $inserted . ' student rows were saved to MySQL.', 'success');
         redirect('/leads/mapping');
     }
 
@@ -246,6 +265,38 @@ final class DashboardController
         return [
             'rows' => $rows,
             'headers' => $headers,
+        ];
+    }
+
+    private function leadDataForView(): array
+    {
+        try {
+            $rows = $this->students->all();
+        } catch (PDOException) {
+            return $this->uploadedLeadData();
+        }
+
+        if ($rows === []) {
+            return $this->uploadedLeadData();
+        }
+
+        return [
+            'rows' => array_map(function (array $row): array {
+                unset($row['id']);
+
+                return [
+                    'Name' => (string) ($row['name'] ?? ''),
+                    'Mobile' => (string) ($row['mobile'] ?? ''),
+                    'Email' => (string) ($row['email'] ?? ''),
+                    'City' => (string) ($row['city'] ?? ''),
+                    'State' => (string) ($row['state'] ?? ''),
+                    'Course' => (string) ($row['course'] ?? ''),
+                    'Region' => (string) ($row['region'] ?? ''),
+                    'Source File' => (string) ($row['source_file'] ?? ''),
+                    'Created At' => (string) ($row['created_at'] ?? ''),
+                ];
+            }, $rows),
+            'headers' => ['Name', 'Mobile', 'Email', 'City', 'State', 'Course', 'Region', 'Source File', 'Created At'],
         ];
     }
 
@@ -444,7 +495,7 @@ final class DashboardController
             return 'East';
         }
 
-        return 'West / Others';
+        return 'West';
     }
 
     private function regionRows(array $rows): array
@@ -476,7 +527,7 @@ final class DashboardController
         $summary = [];
 
         foreach ($rows as $row) {
-            $region = $this->valueByKeys($row, ['region', 'zone']) ?: 'West / Others';
+            $region = $this->valueByKeys($row, ['region', 'zone']) ?: 'West';
             $summary[$region] = ($summary[$region] ?? 0) + 1;
         }
 
@@ -494,6 +545,58 @@ final class DashboardController
     private function json(array $value): string
     {
         return (string) json_encode($value, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+    }
+
+    private function studentsPayload(array $rows): array
+    {
+        $payload = [];
+
+        foreach ($rows as $row) {
+            $name = $this->valueByKeys($row, ['name', 'student_name', 'full_name']);
+            $mobile = $this->valueByKeys($row, ['mobile', 'phone', 'phone_number', 'contact']);
+
+            if ($name === '' || $mobile === '') {
+                continue;
+            }
+
+            $payload[] = [
+                'name' => $name,
+                'mobile' => $mobile,
+                'email' => $this->valueByKeys($row, ['email', 'email_address']),
+                'city' => $this->valueByKeys($row, ['city']),
+                'state' => $this->valueByKeys($row, ['state', 'province']),
+                'course' => $this->valueByKeys($row, ['course', 'program']),
+                'region' => $this->valueByKeys($row, ['region', 'zone']) ?: $this->regionFromState($this->valueByKeys($row, ['state', 'province'])),
+            ];
+        }
+
+        return $payload;
+    }
+
+    private function studentStats(): array
+    {
+        try {
+            $totalStudents = $this->students->countAll();
+            $rows = $this->students->all();
+        } catch (PDOException) {
+            return [
+                'total_students' => 0,
+                'total_uploaded_files' => 0,
+            ];
+        }
+
+        $files = [];
+        foreach ($rows as $row) {
+            $sourceFile = trim((string) ($row['source_file'] ?? ''));
+            if ($sourceFile !== '') {
+                $files[$sourceFile] = true;
+            }
+        }
+
+        return [
+            'total_students' => $totalStudents,
+            'total_uploaded_files' => count($files),
+        ];
     }
 
     private function layoutData(array $user, string $activePage, array $overrides = []): array
@@ -519,6 +622,8 @@ final class DashboardController
             'uploaded_file_time' => '',
             'uploaded_file_type' => '',
             'uploaded_file_size' => '',
+            'total_students' => '0',
+            'total_uploaded_files' => '0',
             'mapping_step' => '',
             'lead_rows_json' => '[]',
             'lead_headers_json' => '[]',
