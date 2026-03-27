@@ -37,7 +37,7 @@ final class DashboardController
         $user = $this->guard();
         $leadData = $this->leadDataForView();
 
-        $this->renderAdminPage($user, 'leads', 'dashboard/pages/leads', [
+        $this->renderAdminPage($user, 'leads', 'leads/pages/leads', [
             'title' => e('Leads'),
             'page_kicker' => e('Lead workspace'),
             'page_title' => e('Leads'),
@@ -121,7 +121,7 @@ final class DashboardController
         $upload = $this->uploadedFileOrRedirect();
         $leadData = $this->uploadedLeadData();
 
-        $this->renderAdminPage($user, 'leads', 'dashboard/pages/mapping', [
+        $this->renderAdminPage($user, 'leads', 'leads/pages/mapping', [
             'title' => e('Lead Mapping'),
             'page_kicker' => e('Step 1 of 3'),
             'page_title' => e('Lead Mapping'),
@@ -148,7 +148,7 @@ final class DashboardController
         $regionRows = $this->regionRows($leadData['rows']);
         $regionHeaders = $this->regionHeaders($leadData['headers']);
 
-        $this->renderAdminPage($user, 'leads', 'dashboard/pages/mapping-region', [
+        $this->renderAdminPage($user, 'leads', 'leads/pages/mapping-region', [
             'title' => e('Region Mapping'),
             'page_kicker' => e('Step 2 of 3'),
             'page_title' => e('Region Grouping'),
@@ -171,7 +171,7 @@ final class DashboardController
         $upload = $this->uploadedFileOrRedirect();
         $leadData = $this->uploadedLeadData();
 
-        $this->renderAdminPage($user, 'leads', 'dashboard/pages/mapping-api-colleagues', [
+        $this->renderAdminPage($user, 'leads', 'leads/pages/mapping-api-colleagues', [
             'title' => e('Assign Colleagues'),
             'page_kicker' => e('Step 3 of 3'),
             'page_title' => e('Assign Region Colleagues'),
