@@ -4,15 +4,16 @@ declare(strict_types=1);
 
 namespace Controllers;
 
-use Models\Student;
+use Models\Lead;
 use PDOException;
+use RuntimeException;
 use Services\AuthService;
 
 final class DashboardController
 {
     public function __construct(
         private readonly AuthService $auth = new AuthService(),
-        private readonly Student $students = new Student()
+        private readonly Lead $leads = new Lead()
     )
     {
     }
@@ -20,14 +21,14 @@ final class DashboardController
     public function index(): void
     {
         $user = $this->guard();
-        $stats = $this->studentStats();
+        $stats = $this->leadStats();
         $this->renderAdminPage($user, 'dashboard', 'dashboard/pages/index', [
             'title' => e('Dashboard'),
             'page_kicker' => e('Overview'),
             'page_title' => e('Dashboard'),
-            'page_description' => e('Track uploaded student data, monitor totals, and review the most recent file activity at a glance.'),
+            'page_description' => e('Track uploaded lead data, monitor totals, and review the most recent file activity at a glance.'),
             'flash_alert' => render_alert(flash(), 'dashboard-alert'),
-            'total_students' => e((string) $stats['total_students']),
+            'total_students' => e((string) $stats['total_leads']),
             'total_uploaded_files' => e((string) $stats['total_uploaded_files']),
         ]);
     }
@@ -41,7 +42,7 @@ final class DashboardController
             'title' => e('Leads'),
             'page_kicker' => e('Lead workspace'),
             'page_title' => e('Leads'),
-            'page_description' => e('Upload lead files, save students into MySQL, and review the stored rows from the database.'),
+            'page_description' => e('Upload lead files, save mapped rows into MySQL, and review the stored leads from the database.'),
             'flash_alert' => render_alert(flash(), 'dashboard-alert'),
             'page_action' => $this->uploadButtonHtml(),
             'lead_rows_json' => $this->json($leadData['rows']),
@@ -71,9 +72,7 @@ final class DashboardController
         }
 
         $extension = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
-        $allowed = ['xls', 'xlsx', 'csv'];
-
-        if (!in_array($extension, $allowed, true)) {
+        if (!in_array($extension, ['xls', 'xlsx', 'csv'], true)) {
             flash('Only XLS, XLSX, and CSV files are allowed.');
             redirect('/leads');
         }
@@ -91,27 +90,26 @@ final class DashboardController
             redirect('/leads');
         }
 
+        try {
+            $leadData = $this->parseUploadedLeadData($destination, $extension);
+            $batchId = uniqid('batch_', true);
+            $inserted = $this->leads->insertMany($this->databaseRows($leadData['rows']), $batchId, $fileName);
+        } catch (RuntimeException|PDOException $exception) {
+            flash($exception->getMessage() !== '' ? $exception->getMessage() : 'Lead upload failed.');
+            redirect('/leads');
+        }
+
         $_SESSION['last_uploaded_lead_file'] = [
             'original_name' => $fileName,
             'stored_name' => $storedName,
             'uploaded_at' => date('Y-m-d H:i:s'),
             'size' => $size,
             'extension' => strtoupper($extension),
+            'batch_id' => $batchId,
         ];
-        $leadData = $this->parseUploadedLeadData($destination, $extension);
         $_SESSION['uploaded_lead_data'] = $leadData;
 
-        try {
-            $inserted = $this->students->insertMany(
-                $this->studentsPayload($leadData['rows']),
-                $fileName
-            );
-        } catch (PDOException) {
-            flash('File uploaded, but MySQL insert failed. Check the students table and database settings.');
-            redirect('/leads');
-        }
-
-        flash('File uploaded successfully. ' . $inserted . ' student rows were saved to MySQL.', 'success');
+        flash('File uploaded successfully. ' . $inserted . ' leads were saved with mapped regions.', 'success');
         redirect('/leads/mapping');
     }
 
@@ -119,7 +117,7 @@ final class DashboardController
     {
         $user = $this->guard();
         $upload = $this->uploadedFileOrRedirect();
-        $leadData = $this->uploadedLeadData();
+        $leadData = $this->leadDataForBatch((string) ($upload['batch_id'] ?? ''));
 
         $this->renderAdminPage($user, 'leads', 'leads/pages/mapping', [
             'title' => e('Lead Mapping'),
@@ -144,9 +142,9 @@ final class DashboardController
     {
         $user = $this->guard();
         $upload = $this->uploadedFileOrRedirect();
-        $leadData = $this->uploadedLeadData();
-        $regionRows = $this->regionRows($leadData['rows']);
-        $regionHeaders = $this->regionHeaders($leadData['headers']);
+        $batchId = (string) ($upload['batch_id'] ?? '');
+        $rows = $this->leadDataForBatch($batchId)['rows'];
+        $summary = $this->leads->summarizeByBatch($batchId);
 
         $this->renderAdminPage($user, 'leads', 'leads/pages/mapping-region', [
             'title' => e('Region Mapping'),
@@ -156,9 +154,9 @@ final class DashboardController
             'flash_alert' => '',
             'page_action' => '<a href="' . e(app_url('leads/mapping')) . '" class="panel-link topbar-action-link">Back</a>',
             'uploaded_file_name' => e((string) ($upload['original_name'] ?? '')),
-            'region_rows_json' => $this->json($regionRows),
-            'region_headers_json' => $this->json($regionHeaders),
-            'region_summary_json' => $this->json($this->summarizeRegions($regionRows)),
+            'region_rows_attr_json' => $this->jsonAttribute($rows),
+            'region_summary_attr_json' => $this->jsonAttribute($summary),
+            'uploaded_batch_id' => e($batchId),
             'mapping_step' => 'region',
             'mapping_region_url' => e(app_url('leads/mapping/region')),
             'mapping_api_url' => e(app_url('leads/mapping/region/api-colleagues')),
@@ -169,17 +167,21 @@ final class DashboardController
     {
         $user = $this->guard();
         $upload = $this->uploadedFileOrRedirect();
-        $leadData = $this->uploadedLeadData();
+        $batchId = (string) ($upload['batch_id'] ?? '');
+        $summary = $this->requestedRegionSummary() ?: $this->leads->summarizeByBatch($batchId);
 
         $this->renderAdminPage($user, 'leads', 'leads/pages/mapping-api-colleagues', [
             'title' => e('Assign Colleagues'),
             'page_kicker' => e('Step 3 of 3'),
             'page_title' => e('Assign Region Colleagues'),
-            'page_description' => e('Select a colleague for each detected region from the uploaded lead file.'),
+            'page_description' => e('Select one or more colleagues from the dropdown and push all leads to the selected APIs.'),
             'flash_alert' => '',
             'page_action' => '<a href="' . e(app_url('leads/mapping/region')) . '" class="panel-link topbar-action-link">Back</a>',
             'uploaded_file_name' => e((string) ($upload['original_name'] ?? '')),
-            'region_summary_json' => $this->json($this->summarizeRegions($this->regionRows($leadData['rows']))),
+            'uploaded_batch_id' => e($batchId),
+            'region_summary_attr_json' => $this->jsonAttribute($summary),
+            'fetch_colleagues_url' => e(app_url('api/fetch-colleagues.php')),
+            'assign_colleagues_url' => e(app_url('api/push-leads.php')),
             'mapping_step' => 'assign',
             'mapping_region_url' => e(app_url('leads/mapping/region')),
             'mapping_api_url' => e(app_url('leads/mapping/region/api-colleagues')),
@@ -231,7 +233,7 @@ final class DashboardController
     {
         $upload = $_SESSION['last_uploaded_lead_file'] ?? null;
 
-        if (!is_array($upload)) {
+        if (!is_array($upload) || trim((string) ($upload['batch_id'] ?? '')) === '') {
             flash('Upload a lead file first to open the mapping flow.');
             redirect('/leads');
         }
@@ -248,6 +250,77 @@ final class DashboardController
             . '</form>';
     }
 
+    private function leadDataForView(): array
+    {
+        try {
+            $rows = $this->leads->all();
+        } catch (PDOException) {
+            return $this->uploadedLeadData();
+        }
+
+        if ($rows === []) {
+            return $this->uploadedLeadData();
+        }
+
+        return [
+            'rows' => array_map(static function (array $row): array {
+                return [
+                    'Batch ID' => (string) ($row['batch_id'] ?? ''),
+                    'Lead ID' => (string) ($row['lead_id'] ?? ''),
+                    'Name' => (string) ($row['name'] ?? ''),
+                    'Email' => (string) ($row['email'] ?? ''),
+                    'Phone' => (string) ($row['phone'] ?? ''),
+                    'Course' => (string) ($row['course'] ?? ''),
+                    'Specialization' => (string) ($row['specialization'] ?? ''),
+                    'Campus' => (string) ($row['campus'] ?? ''),
+                    'College Name' => (string) ($row['college_name'] ?? ''),
+                    'City' => (string) ($row['city'] ?? ''),
+                    'State' => (string) ($row['state'] ?? ''),
+                    'Region' => (string) ($row['region'] ?? ''),
+                    'Source File' => (string) ($row['source_file'] ?? ''),
+                    'Created At' => (string) ($row['created_at'] ?? ''),
+                ];
+            }, $rows),
+            'headers' => ['Batch ID', 'Lead ID', 'Name', 'Email', 'Phone', 'Course', 'Specialization', 'Campus', 'College Name', 'City', 'State', 'Region', 'Source File', 'Created At'],
+        ];
+    }
+
+    private function leadDataForBatch(string $batchId): array
+    {
+        $rows = [];
+
+        if ($batchId !== '') {
+            try {
+                $rows = $this->leads->findByBatch($batchId);
+            } catch (PDOException) {
+                $rows = [];
+            }
+        }
+
+        if ($rows === []) {
+            return $this->uploadedLeadData();
+        }
+
+        return [
+            'rows' => array_map(static function (array $row): array {
+                return [
+                    'Lead ID' => (string) ($row['lead_id'] ?? ''),
+                    'Name' => (string) ($row['name'] ?? ''),
+                    'Email' => (string) ($row['email'] ?? ''),
+                    'Phone' => (string) ($row['phone'] ?? ''),
+                    'Course' => (string) ($row['course'] ?? ''),
+                    'Specialization' => (string) ($row['specialization'] ?? ''),
+                    'Campus' => (string) ($row['campus'] ?? ''),
+                    'College Name' => (string) ($row['college_name'] ?? ''),
+                    'City' => (string) ($row['city'] ?? ''),
+                    'State' => (string) ($row['state'] ?? ''),
+                    'Region' => (string) ($row['region'] ?? ''),
+                ];
+            }, $rows),
+            'headers' => ['Lead ID', 'Name', 'Email', 'Phone', 'Course', 'Specialization', 'Campus', 'College Name', 'City', 'State', 'Region'],
+        ];
+    }
+
     private function uploadedLeadData(): array
     {
         $leadData = $_SESSION['uploaded_lead_data'] ?? null;
@@ -259,62 +332,72 @@ final class DashboardController
             ];
         }
 
-        $rows = isset($leadData['rows']) && is_array($leadData['rows']) ? $leadData['rows'] : [];
-        $headers = isset($leadData['headers']) && is_array($leadData['headers']) ? $leadData['headers'] : [];
-
         return [
-            'rows' => $rows,
-            'headers' => $headers,
-        ];
-    }
-
-    private function leadDataForView(): array
-    {
-        try {
-            $rows = $this->students->all();
-        } catch (PDOException) {
-            return $this->uploadedLeadData();
-        }
-
-        if ($rows === []) {
-            return $this->uploadedLeadData();
-        }
-
-        return [
-            'rows' => array_map(function (array $row): array {
-                unset($row['id']);
-
-                return [
-                    'Name' => (string) ($row['name'] ?? ''),
-                    'Mobile' => (string) ($row['mobile'] ?? ''),
-                    'Email' => (string) ($row['email'] ?? ''),
-                    'City' => (string) ($row['city'] ?? ''),
-                    'State' => (string) ($row['state'] ?? ''),
-                    'Course' => (string) ($row['course'] ?? ''),
-                    'Region' => (string) ($row['region'] ?? ''),
-                    'Source File' => (string) ($row['source_file'] ?? ''),
-                    'Created At' => (string) ($row['created_at'] ?? ''),
-                ];
-            }, $rows),
-            'headers' => ['Name', 'Mobile', 'Email', 'City', 'State', 'Course', 'Region', 'Source File', 'Created At'],
+            'rows' => isset($leadData['rows']) && is_array($leadData['rows']) ? $leadData['rows'] : [],
+            'headers' => isset($leadData['headers']) && is_array($leadData['headers']) ? $leadData['headers'] : [],
         ];
     }
 
     private function parseUploadedLeadData(string $filePath, string $extension): array
     {
-        $rows = $this->parsedRowsFromRequest();
+        $rows = $this->parseSpreadsheetRows($filePath, $extension);
 
-        if ($rows === [] && $extension === 'csv') {
-            $rows = $this->parseCsvRows($filePath);
+        if ($rows === []) {
+            $rows = $this->parsedRowsFromRequest();
         }
 
         $rows = $this->prepareRows($rows);
-        $headers = $this->collectHeaders($rows, $this->parsedHeadersFromRequest());
+        $headers = ['Lead ID', 'Name', 'Email', 'Phone', 'Course', 'Specialization', 'Campus', 'College Name', 'City', 'State', 'Region'];
 
         return [
             'rows' => $rows,
             'headers' => $headers,
         ];
+    }
+
+    private function parseSpreadsheetRows(string $filePath, string $extension): array
+    {
+        if ($extension === 'csv') {
+            return $this->parseCsvRows($filePath);
+        }
+
+        $autoload = base_path('vendor/autoload.php');
+        if (is_file($autoload)) {
+            require_once $autoload;
+        }
+
+        if (!class_exists(\PhpOffice\PhpSpreadsheet\IOFactory::class)) {
+            return [];
+        }
+
+        $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($filePath);
+        $sheetRows = $spreadsheet->getActiveSheet()->toArray('', true, true, false);
+        if ($sheetRows === []) {
+            return [];
+        }
+
+        $headerRow = array_shift($sheetRows);
+        $headers = array_map(static fn ($value): string => trim((string) $value), is_array($headerRow) ? $headerRow : []);
+        $rows = [];
+
+        foreach ($sheetRows as $sheetRow) {
+            if (!is_array($sheetRow)) {
+                continue;
+            }
+
+            $row = [];
+            foreach ($headers as $index => $header) {
+                if ($header === '') {
+                    continue;
+                }
+
+                $row[$header] = trim((string) ($sheetRow[$index] ?? ''));
+            }
+
+            $rows[] = $row;
+        }
+
+        return $rows;
     }
 
     private function parsedRowsFromRequest(): array
@@ -330,29 +413,11 @@ final class DashboardController
         return is_array($decoded) ? $decoded : [];
     }
 
-    private function parsedHeadersFromRequest(): array
-    {
-        $payload = $_POST['parsed_headers_json'] ?? null;
-
-        if (!is_string($payload) || trim($payload) === '') {
-            return [];
-        }
-
-        $decoded = json_decode($payload, true);
-
-        if (!is_array($decoded)) {
-            return [];
-        }
-
-        return array_values(array_filter(array_map(static fn ($header): string => trim((string) $header), $decoded), static fn (string $header): bool => $header !== ''));
-    }
-
     private function parseCsvRows(string $filePath): array
     {
         $handle = fopen($filePath, 'rb');
-
         if ($handle === false) {
-            return [];
+            throw new RuntimeException('Unable to open the uploaded CSV file.');
         }
 
         $headers = null;
@@ -370,7 +435,7 @@ final class DashboardController
                     continue;
                 }
 
-                $row[$header] = (string) ($data[$index] ?? '');
+                $row[$header] = trim((string) ($data[$index] ?? ''));
             }
 
             $rows[] = $row;
@@ -390,65 +455,41 @@ final class DashboardController
                 continue;
             }
 
-            $row = [];
-            foreach ($rawRow as $key => $value) {
-                $cleanKey = trim((string) $key);
-                if ($cleanKey === '') {
-                    continue;
-                }
-
-                $row[$cleanKey] = is_scalar($value) || $value === null ? trim((string) $value) : '';
-            }
+            $row = [
+                'Lead ID' => $this->firstValue($rawRow, ['lead_id', 'leadid', 'id']) ?: 'LD' . (string) (1001 + $index),
+                'Name' => $this->firstValue($rawRow, ['name', 'student_name', 'full_name']),
+                'Email' => $this->firstValue($rawRow, ['email', 'email_address']),
+                'Phone' => $this->firstValue($rawRow, ['phone', 'mobile', 'mobile_number', 'phone_number', 'contact']),
+                'Course' => $this->firstValue($rawRow, ['course', 'program']),
+                'Specialization' => $this->firstValue($rawRow, ['specialization']),
+                'Campus' => $this->firstValue($rawRow, ['campus', 'college_campus']),
+                'College Name' => $this->firstValue($rawRow, ['college_name', 'college']),
+                'City' => $this->firstValue($rawRow, ['city']),
+                'State' => $this->firstValue($rawRow, ['state', 'province']),
+            ];
 
             if (!$this->hasRowContent($row)) {
                 continue;
             }
 
-            $region = $this->valueByKeys($row, ['region', 'zone']);
-            $state = $this->valueByKeys($row, ['state', 'province']);
-
-            if ($region === '') {
-                $region = $this->regionFromState($state);
-            }
-
-            if ($this->valueByKeys($row, ['lead_id', 'leadid', 'id']) === '') {
-                $row['Lead ID'] = 'LD' . (string) (1001 + $index);
-            }
-
-            if ($this->valueByKeys($row, ['region', 'zone']) === '') {
-                $row['Region'] = $region;
-            }
-
+            $row['Region'] = getRegionByState($row['State']);
             $prepared[] = $row;
         }
 
-        return array_values($prepared);
-    }
-
-    private function collectHeaders(array $rows, array $requestedHeaders = []): array
-    {
-        $headers = [];
-
-        foreach ($requestedHeaders as $header) {
-            if (!in_array($header, $headers, true)) {
-                $headers[] = $header;
-            }
+        if ($prepared === []) {
+            throw new RuntimeException('No lead rows were found in the uploaded file.');
         }
 
-        foreach ($rows as $row) {
-            foreach (array_keys($row) as $header) {
-                if (!in_array($header, $headers, true)) {
-                    $headers[] = $header;
-                }
-            }
-        }
-
-        return $headers;
+        return $prepared;
     }
 
     private function hasRowContent(array $row): bool
     {
-        foreach ($row as $value) {
+        foreach ($row as $key => $value) {
+            if ($key === 'Lead ID') {
+                continue;
+            }
+
             if (trim((string) $value) !== '') {
                 return true;
             }
@@ -457,7 +498,7 @@ final class DashboardController
         return false;
     }
 
-    private function valueByKeys(array $row, array $keys): string
+    private function firstValue(array $row, array $keys): string
     {
         foreach ($row as $originalKey => $value) {
             if (in_array($this->normalizeKey((string) $originalKey), $keys, true)) {
@@ -476,70 +517,35 @@ final class DashboardController
         return trim((string) $key, '_');
     }
 
-    private function regionFromState(string $stateValue): string
+    private function databaseRows(array $rows): array
     {
-        $stateName = strtolower(trim($stateValue));
-        $south = ['karnataka', 'tamil nadu', 'telangana', 'kerala', 'andhra pradesh'];
-        $north = ['delhi', 'rajasthan', 'haryana', 'punjab', 'uttar pradesh', 'uttarakhand', 'himachal pradesh', 'jammu and kashmir'];
-        $east = ['west bengal', 'odisha', 'bihar', 'jharkhand', 'assam', 'sikkim'];
-
-        if (in_array($stateName, $south, true)) {
-            return 'South';
-        }
-
-        if (in_array($stateName, $north, true)) {
-            return 'North';
-        }
-
-        if (in_array($stateName, $east, true)) {
-            return 'East';
-        }
-
-        return 'West';
-    }
-
-    private function regionRows(array $rows): array
-    {
-        return array_map(function (array $row): array {
-            $region = $this->valueByKeys($row, ['region', 'zone']);
-
-            if ($region === '') {
-                $region = $this->regionFromState($this->valueByKeys($row, ['state', 'province']));
-            }
-
-            $row['Region'] = $region;
-
-            return $row;
+        return array_map(static function (array $row): array {
+            return [
+                'lead_id' => (string) ($row['Lead ID'] ?? ''),
+                'name' => (string) ($row['Name'] ?? ''),
+                'email' => (string) ($row['Email'] ?? ''),
+                'phone' => (string) ($row['Phone'] ?? ''),
+                'course' => (string) ($row['Course'] ?? ''),
+                'specialization' => (string) ($row['Specialization'] ?? ''),
+                'campus' => (string) ($row['Campus'] ?? ''),
+                'college_name' => (string) ($row['College Name'] ?? ''),
+                'city' => (string) ($row['City'] ?? ''),
+                'state' => (string) ($row['State'] ?? ''),
+                'region' => (string) ($row['Region'] ?? 'West / Others'),
+            ];
         }, $rows);
     }
 
-    private function regionHeaders(array $headers): array
+    private function requestedRegionSummary(): array
     {
-        if (!in_array('Region', $headers, true)) {
-            array_unshift($headers, 'Region');
+        $payload = $_GET['region_summary_json'] ?? null;
+        if (!is_string($payload) || trim($payload) === '') {
+            return [];
         }
 
-        return array_values(array_unique($headers));
-    }
+        $decoded = json_decode($payload, true);
 
-    private function summarizeRegions(array $rows): array
-    {
-        $summary = [];
-
-        foreach ($rows as $row) {
-            $region = $this->valueByKeys($row, ['region', 'zone']) ?: 'West';
-            $summary[$region] = ($summary[$region] ?? 0) + 1;
-        }
-
-        $cards = [];
-        foreach ($summary as $region => $total) {
-            $cards[] = [
-                'region' => $region,
-                'total' => $total,
-            ];
-        }
-
-        return $cards;
+        return is_array($decoded) ? $decoded : [];
     }
 
     private function json(array $value): string
@@ -547,56 +553,24 @@ final class DashboardController
         return (string) json_encode($value, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
     }
 
-    private function studentsPayload(array $rows): array
+    private function jsonAttribute(array $value): string
     {
-        $payload = [];
-
-        foreach ($rows as $row) {
-            $name = $this->valueByKeys($row, ['name', 'student_name', 'full_name']);
-            $mobile = $this->valueByKeys($row, ['mobile', 'phone', 'phone_number', 'contact']);
-
-            if ($name === '' || $mobile === '') {
-                continue;
-            }
-
-            $payload[] = [
-                'name' => $name,
-                'mobile' => $mobile,
-                'email' => $this->valueByKeys($row, ['email', 'email_address']),
-                'city' => $this->valueByKeys($row, ['city']),
-                'state' => $this->valueByKeys($row, ['state', 'province']),
-                'course' => $this->valueByKeys($row, ['course', 'program']),
-                'region' => $this->valueByKeys($row, ['region', 'zone']) ?: $this->regionFromState($this->valueByKeys($row, ['state', 'province'])),
-            ];
-        }
-
-        return $payload;
+        return e($this->json($value));
     }
 
-    private function studentStats(): array
+    private function leadStats(): array
     {
         try {
-            $totalStudents = $this->students->countAll();
-            $rows = $this->students->all();
+            return [
+                'total_leads' => $this->leads->countAll(),
+                'total_uploaded_files' => $this->leads->countDistinctBatches(),
+            ];
         } catch (PDOException) {
             return [
-                'total_students' => 0,
+                'total_leads' => 0,
                 'total_uploaded_files' => 0,
             ];
         }
-
-        $files = [];
-        foreach ($rows as $row) {
-            $sourceFile = trim((string) ($row['source_file'] ?? ''));
-            if ($sourceFile !== '') {
-                $files[$sourceFile] = true;
-            }
-        }
-
-        return [
-            'total_students' => $totalStudents,
-            'total_uploaded_files' => count($files),
-        ];
     }
 
     private function layoutData(array $user, string $activePage, array $overrides = []): array
@@ -622,19 +596,24 @@ final class DashboardController
             'uploaded_file_time' => '',
             'uploaded_file_type' => '',
             'uploaded_file_size' => '',
+            'uploaded_batch_id' => '',
             'total_students' => '0',
             'total_uploaded_files' => '0',
             'mapping_step' => '',
             'lead_rows_json' => '[]',
             'lead_headers_json' => '[]',
             'lead_total_records' => '0',
-            'region_rows_json' => '[]',
-            'region_headers_json' => '[]',
-            'region_summary_json' => '[]',
+            'region_rows_attr_json' => '[]',
+            'region_summary_attr_json' => '[]',
             'mapping_region_url' => e(app_url('leads/mapping/region')),
             'mapping_api_url' => e(app_url('leads/mapping/region/api-colleagues')),
+            'fetch_colleagues_url' => e(app_url('api/fetch-colleagues.php')),
+            'assign_colleagues_url' => e(app_url('api/push-leads.php')),
         ];
 
         return array_merge($base, $overrides);
     }
 }
+
+
+

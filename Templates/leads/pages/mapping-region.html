@@ -9,27 +9,9 @@
     <div class="mapping-step"><span>3</span><strong>Assign</strong></div>
 </section>
 
-<section class="mapping-region-page" data-region-grouping data-api-url="{{mapping_api_url}}">
+<section class="mapping-region-page" data-region-grouping data-api-url="{{mapping_api_url}}" data-region-rows="{{region_rows_attr_json}}" data-region-summary="{{region_summary_attr_json}}" data-batch-id="{{uploaded_batch_id}}">
     <div class="mapping-region-summary" data-region-summary-cards></div>
-    <section class="table-panel region-summary-table-panel" data-region-table>
-        <div class="panel-head panel-head--table">
-            <div>
-                <h3>Region-wise Lead Details</h3>
-                <p class="table-subtext">Uploaded leads are shown with their mapped region and 20 rows per page.</p>
-            </div>
-            <span class="panel-chip" data-region-count>0 rows</span>
-        </div>
-        <div class="table-responsive">
-            <table class="table admin-table align-middle mb-0">
-                <thead data-region-head></thead>
-                <tbody data-region-body></tbody>
-            </table>
-        </div>
-        <div class="table-pagination" data-region-pagination></div>
-        <script type="application/json" data-region-rows>{{region_rows_json}}</script>
-        <script type="application/json" data-region-headers>{{region_headers_json}}</script>
-        <script type="application/json" data-region-summary>{{region_summary_json}}</script>
-    </section>
+    <section class="region-groups" data-region-groups></section>
     <div class="mapping-actions mapping-actions--footer">
         <a href="{{leads_url}}" class="panel-link topbar-action-link">Back to Leads</a>
         <button type="button" class="btn dashboard-logout" data-confirm-assign>Confirm &amp; Assign</button>

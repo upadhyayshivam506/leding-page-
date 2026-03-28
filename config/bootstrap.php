@@ -27,5 +27,6 @@ spl_autoload_register(static function (string $class): void {
 });
 
 require_once __DIR__ . '/helpers.php';
+require_once dirname(__DIR__) . '/helpers/region-helper.php';
 
 Config\Env::load(dirname(__DIR__) . '/.env');

@@ -9,15 +9,19 @@
     <div class="mapping-step"><span>3</span><strong>Assign</strong></div>
 </section>
 
-<section class="assignment-page" data-colleague-assignment>
+<section class="assignment-page" data-colleague-assignment data-region-summary="{{region_summary_attr_json}}" data-fetch-url="{{fetch_colleagues_url}}" data-submit-url="{{assign_colleagues_url}}" data-success-redirect="{{leads_url}}" data-batch-id="{{uploaded_batch_id}}">
     <div class="assignment-grid" data-assignment-grid></div>
+    <div id="upload-loader" style="display:none;">Uploading leads...</div>
     <div class="assignment-success d-none" data-assignment-success>
-        <h3>Leads successfully assigned!</h3>
-        <p>The selected colleague mapping is saved in browser state for this flow until backend API integration is added.</p>
+        <h3>Lead push completed.</h3>
+        <p data-assignment-success-message>The selected region assignments were processed successfully.</p>
+    </div>
+    <div class="assignment-success d-none" data-assignment-error>
+        <h3>Lead push failed.</h3>
+        <p data-assignment-error-message>Please review the error and try again.</p>
     </div>
     <div class="mapping-actions mapping-actions--footer">
         <a href="{{mapping_region_url}}" class="panel-link topbar-action-link">Back</a>
-        <button type="button" class="btn dashboard-logout" data-assignment-submit>Submit</button>
+        <button type="button" class="btn dashboard-logout" data-assignment-submit id="submit-button">Submit</button>
     </div>
-    <script type="application/json" data-assignment-summary>{{region_summary_json}}</script>
 </section>

@@ -1,40 +1,27 @@
 document.addEventListener('DOMContentLoaded', function () {
-    var toggle = document.querySelector('[data-password-toggle]');
-    var passwordField = document.getElementById('password');
-
-    if (toggle && passwordField) {
-        toggle.addEventListener('click', function () {
-            var isPassword = passwordField.getAttribute('type') === 'password';
-            passwordField.setAttribute('type', isPassword ? 'text' : 'password');
-            toggle.classList.toggle('is-visible', isPassword);
-            toggle.setAttribute('aria-label', isPassword ? 'Hide password' : 'Show password');
-        });
-    }
-
-    var stateKey = 'lead_management_mapping_state';
     var rowsPerPage = 20;
-
-    function readState() {
-        try {
-            return JSON.parse(localStorage.getItem(stateKey) || '{}');
-        } catch (error) {
-            return {};
-        }
-    }
-
-    function writeState(nextState) {
-        localStorage.setItem(stateKey, JSON.stringify(nextState));
-    }
+    var regionOrder = ['North', 'South', 'East', 'West / Others'];
 
     function readJsonScript(root, selector) {
         var node = root.querySelector(selector);
-
         if (!node) {
             return [];
         }
 
         try {
             return JSON.parse(node.textContent || '[]');
+        } catch (error) {
+            return [];
+        }
+    }
+
+    function readJsonAttribute(node, name) {
+        if (!node) {
+            return [];
+        }
+
+        try {
+            return JSON.parse(node.getAttribute(name) || '[]');
         } catch (error) {
             return [];
         }
@@ -47,69 +34,6 @@ document.addEventListener('DOMContentLoaded', function () {
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
-    }
-
-    function normalizeKey(key) {
-        return String(key || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
-    }
-
-    function getValue(row, keys) {
-        var found = '';
-
-        Object.keys(row || {}).some(function (originalKey) {
-            var normalized = normalizeKey(originalKey);
-            if (keys.indexOf(normalized) !== -1) {
-                found = row[originalKey];
-                return true;
-            }
-            return false;
-        });
-
-        return found;
-    }
-
-    function regionFromState(stateValue) {
-        var stateName = String(stateValue || '').trim().toLowerCase();
-        var south = ['karnataka', 'tamil nadu', 'telangana', 'kerala', 'andhra pradesh'];
-        var north = ['delhi', 'rajasthan', 'haryana', 'punjab', 'uttar pradesh', 'uttarakhand', 'himachal pradesh', 'jammu and kashmir'];
-        var east = ['west bengal', 'odisha', 'bihar', 'jharkhand', 'assam', 'sikkim'];
-
-        if (south.indexOf(stateName) !== -1) {
-            return 'South';
-        }
-        if (north.indexOf(stateName) !== -1) {
-            return 'North';
-        }
-        if (east.indexOf(stateName) !== -1) {
-            return 'East';
-        }
-        return 'West / Others';
-    }
-
-    function prepareRows(rawRows) {
-        return rawRows.filter(function (row) {
-            return Object.values(row || {}).some(function (value) {
-                return String(value || '').trim() !== '';
-            });
-        }).map(function (row, index) {
-            var preparedRow = Object.assign({}, row);
-            var region = getValue(preparedRow, ['region', 'zone']);
-            var state = getValue(preparedRow, ['state', 'province']);
-
-            if (!region) {
-                region = regionFromState(state);
-            }
-
-            if (!getValue(preparedRow, ['lead_id', 'leadid', 'id'])) {
-                preparedRow['Lead ID'] = 'LD' + String(1001 + index);
-            }
-
-            if (!getValue(preparedRow, ['region', 'zone'])) {
-                preparedRow['Region'] = region;
-            }
-
-            return preparedRow;
-        });
     }
 
     function buildPager(paginationRoot, currentPage, totalPages, onPageChange) {
@@ -157,13 +81,11 @@ document.addEventListener('DOMContentLoaded', function () {
             currentPage = page;
 
             if (head) {
-                if (headers.length > 0) {
-                    head.innerHTML = '<tr>' + headers.map(function (header) {
+                head.innerHTML = headers.length > 0
+                    ? '<tr>' + headers.map(function (header) {
                         return '<th>' + escapeHtml(header) + '</th>';
-                    }).join('') + '</tr>';
-                } else {
-                    head.innerHTML = '';
-                }
+                    }).join('') + '</tr>'
+                    : '';
             }
 
             if (!body) {
@@ -200,11 +122,161 @@ document.addEventListener('DOMContentLoaded', function () {
         update(1);
     }
 
+    function renderCompactTable(rows, headers) {
+        if (!rows.length) {
+            return '<div class="table-responsive"><table class="table admin-table align-middle mb-0"><tbody><tr><td class="table-empty-state">No leads in this region.</td></tr></tbody></table></div>';
+        }
+
+        return '<div class="table-responsive"><table class="table admin-table align-middle mb-0"><thead><tr>' + headers.map(function (header) {
+            return '<th>' + escapeHtml(header) + '</th>';
+        }).join('') + '</tr></thead><tbody>' + rows.map(function (row) {
+            return '<tr>' + headers.map(function (header) {
+                return '<td>' + escapeHtml(row && row[header] != null ? row[header] : '') + '</td>';
+            }).join('') + '</tr>';
+        }).join('') + '</tbody></table></div>';
+    }
+
+    function groupRowsByRegion(rows) {
+        var grouped = {
+            'North': [],
+            'South': [],
+            'East': [],
+            'West / Others': []
+        };
+
+        rows.forEach(function (row) {
+            var region = row.Region || row.region || 'West / Others';
+            if (!grouped[region]) {
+                grouped[region] = [];
+            }
+            grouped[region].push(row);
+        });
+
+        return grouped;
+    }
+
+    function fetchJson(url, options) {
+        return fetch(url, options).then(function (response) {
+            return response.text().then(function (text) {
+                var data;
+
+                try {
+                    data = JSON.parse(text);
+                } catch (error) {
+                    throw new Error('Server returned an invalid JSON response.');
+                }
+
+                if (!response.ok) {
+                    throw new Error(data.message || 'Request failed.');
+                }
+
+                return data;
+            });
+        });
+    }
+
+    var colleagueOptions = [
+        { value: '', label: 'Select Colleague' },
+        { value: 'NONE', label: 'None' },
+        { value: 'IBI', label: 'Indore Business Institute' },
+        { value: 'Sunstone', label: 'Sunstone Education' },
+        { value: 'IILM', label: 'Institute for Integrated Learning in Management' },
+        { value: 'NITTE', label: 'Nitte University' },
+        { value: 'KKMU', label: 'K K Modi University' },
+        { value: 'KCM', label: 'KCM Bangalore' },
+        { value: 'PPSU', label: 'P P Savani University' },
+        { value: 'GNOIT', label: 'Greater Noida Institute of Technology' },
+        { value: 'PBS', label: 'Pune Business School' },
+        { value: 'DBUU', label: 'Dev Bhoomi Uttarakhand University' },
+        { value: 'PCU', label: 'Pimpri Chinchwad University' },
+        { value: 'JKBS', label: 'JK Business School' },
+        { value: 'GIBS', label: 'Global Institute of Business Studies' },
+        { value: 'Alliance', label: 'Alliance University' },
+        { value: 'Lexicon', label: 'Lexicon Management Institute' }
+    ];
+
+    function populateDropdown(selectElement, selectedValues) {
+        var values = Array.isArray(selectedValues) ? selectedValues : [];
+
+        selectElement.innerHTML = colleagueOptions.map(function (option) {
+            var isSelected = values.indexOf(option.value) !== -1;
+            return '<option value="' + escapeHtml(option.value) + '"' + (isSelected ? ' selected' : '') + '>' + escapeHtml(option.label) + '</option>';
+        }).join('');
+    }
+
+    function readSelectValues(select) {
+        var values = [];
+
+        if (typeof window.jQuery !== 'undefined') {
+            var jqueryValues = window.jQuery(select).val();
+            if (Array.isArray(jqueryValues)) {
+                values = jqueryValues.slice();
+            } else if (jqueryValues) {
+                values = [jqueryValues];
+            }
+        }
+
+        if (values.length === 0) {
+            values = Array.from(select.selectedOptions).map(function (option) {
+                return option.value;
+            });
+        }
+
+        return values.filter(function (value) {
+            return value !== '' && value !== 'NONE';
+        });
+    }
+
+    function initializeGlobalColleagueSelects(root, onChange) {
+        if (!root) {
+            return;
+        }
+
+        root.querySelectorAll('.region-colleague-select').forEach(function (selectElement) {
+            selectElement.addEventListener('change', function () {
+                onChange(readSelectValues(selectElement), selectElement);
+            });
+        });
+
+        if (typeof window.jQuery === 'undefined' || typeof window.jQuery.fn.select2 === 'undefined') {
+            return;
+        }
+
+        window.jQuery(root).find('.region-colleague-select').each(function () {
+            var select = window.jQuery(this);
+
+            if (select.hasClass('select2-hidden-accessible')) {
+                select.select2('destroy');
+            }
+
+            select.select2({
+                placeholder: 'Select colleagues',
+                width: '100%',
+                closeOnSelect: false,
+                allowClear: true
+            });
+
+            select.off('change.globalColleagues').on('change.globalColleagues', function () {
+                onChange(readSelectValues(this), this);
+            });
+        });
+    }
+
+    var toggle = document.querySelector('[data-password-toggle]');
+    var passwordField = document.getElementById('password');
+    if (toggle && passwordField) {
+        toggle.addEventListener('click', function () {
+            var isPassword = passwordField.getAttribute('type') === 'password';
+            passwordField.setAttribute('type', isPassword ? 'text' : 'password');
+            toggle.classList.toggle('is-visible', isPassword);
+            toggle.setAttribute('aria-label', isPassword ? 'Hide password' : 'Show password');
+        });
+    }
+
     var uploadInput = document.querySelector('[data-upload-input]');
     var uploadForm = document.querySelector('[data-upload-form]');
     var uploadRowsField = document.querySelector('[data-upload-rows-json]');
     var uploadHeadersField = document.querySelector('[data-upload-headers-json]');
-
     if (uploadInput && uploadForm) {
         uploadInput.addEventListener('change', function () {
             if (!(uploadInput.files && uploadInput.files.length > 0)) {
@@ -212,7 +284,6 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             var file = uploadInput.files[0];
-
             if (typeof XLSX === 'undefined') {
                 uploadForm.submit();
                 return;
@@ -225,15 +296,11 @@ document.addEventListener('DOMContentLoaded', function () {
                     var workbook = XLSX.read(data, { type: 'array' });
                     var firstSheet = workbook.Sheets[workbook.SheetNames[0]];
                     var jsonRows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
-                    var preparedRows = prepareRows(jsonRows);
-                    var headers = preparedRows.length > 0 ? Object.keys(preparedRows[0]) : [];
-
                     if (uploadRowsField) {
-                        uploadRowsField.value = JSON.stringify(preparedRows);
+                        uploadRowsField.value = JSON.stringify(jsonRows);
                     }
-
                     if (uploadHeadersField) {
-                        uploadHeadersField.value = JSON.stringify(headers);
+                        uploadHeadersField.value = JSON.stringify(jsonRows.length > 0 ? Object.keys(jsonRows[0]) : []);
                     }
                 } catch (error) {
                     if (uploadRowsField) {
@@ -252,13 +319,6 @@ document.addEventListener('DOMContentLoaded', function () {
             reader.readAsArrayBuffer(file);
         });
     }
-
-    var colleaguesByRegion = {
-        'South': ['Asha Reddy', 'Kiran Kumar', 'Divya Menon'],
-        'North': ['Rohit Bansal', 'Neha Kapoor', 'Varun Malhotra'],
-        'East': ['Sohini Ghosh', 'Abhishek Paul', 'Riya Das'],
-        'West / Others': ['Mihir Shah', 'Pooja Jain', 'Yash Kulkarni']
-    };
 
     var leadsRoot = document.querySelector('[data-leads-table]');
     if (leadsRoot) {
@@ -297,7 +357,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         if (keyFields) {
-            keyFields.textContent = previewHeaders.length > 0 ? previewHeaders.slice(0, 7).join(', ') : 'No columns detected';
+            keyFields.textContent = previewHeaders.length > 0 ? previewHeaders.join(', ') : 'No columns detected';
         }
 
         if (nextButton) {
@@ -309,38 +369,42 @@ document.addEventListener('DOMContentLoaded', function () {
 
     var regionRoot = document.querySelector('[data-region-grouping]');
     if (regionRoot) {
-        var regionSummaryCards = regionRoot.querySelector('[data-region-summary-cards]');
+        var regionRows = readJsonAttribute(regionRoot, 'data-region-rows');
+        var regionSummary = readJsonAttribute(regionRoot, 'data-region-summary');
+        var summaryCards = regionRoot.querySelector('[data-region-summary-cards]');
+        var regionGroups = regionRoot.querySelector('[data-region-groups]');
         var confirmAssignButton = regionRoot.querySelector('[data-confirm-assign]');
         var apiUrl = regionRoot.getAttribute('data-api-url');
-        var regionSummary = readJsonScript(regionRoot, '[data-region-summary]');
+        var groupedRows = groupRowsByRegion(regionRows);
+        var tableHeaders = regionRows.length > 0 ? Object.keys(regionRows[0]) : ['Lead ID', 'Name', 'Email', 'Phone', 'Course', 'Specialization', 'Campus', 'College Name', 'City', 'State', 'Region'];
 
-        if (regionSummaryCards) {
-            if (regionSummary.length === 0) {
-                regionSummaryCards.innerHTML = '<article class="metric-card mapping-region-card"><div class="metric-card__header"><span>No regions</span><span class="panel-chip">Summary</span></div><h3>0</h3><p>Upload leads to generate region grouping.</p></article>';
-            } else {
-                regionSummaryCards.innerHTML = regionSummary.map(function (item) {
-                    return '<article class="metric-card mapping-region-card">' +
-                        '<div class="metric-card__header"><span>' + escapeHtml(item.region) + '</span><span class="panel-chip">Region</span></div>' +
-                        '<h3>' + escapeHtml(item.total) + '</h3>' +
-                        '<p>Leads grouped under ' + escapeHtml(item.region) + '.</p>' +
-                        '</article>';
-                }).join('');
-            }
+        if (summaryCards) {
+            summaryCards.innerHTML = regionOrder.map(function (region) {
+                var item = regionSummary.find(function (entry) {
+                    return entry.region === region;
+                }) || { region: region, total: 0 };
+
+                return '<article class="metric-card mapping-region-card">' +
+                    '<div class="metric-card__header"><span>' + escapeHtml(region) + ' Region</span><span class="panel-chip">Leads</span></div>' +
+                    '<h3>' + escapeHtml(item.total) + '</h3>' +
+                    '<p>Mapped leads ready for assignment.</p>' +
+                    '</article>';
+            }).join('');
         }
 
-        renderTable({
-            headers: readJsonScript(regionRoot, '[data-region-headers]'),
-            rows: readJsonScript(regionRoot, '[data-region-rows]'),
-            head: regionRoot.querySelector('[data-region-head]'),
-            body: regionRoot.querySelector('[data-region-body]'),
-            countNode: regionRoot.querySelector('[data-region-count]'),
-            paginationRoot: regionRoot.querySelector('[data-region-pagination]'),
-            emptyMessage: 'No uploaded leads are available for region grouping.'
-        });
+        if (regionGroups) {
+            regionGroups.innerHTML = regionOrder.map(function (region) {
+                return '<article class="table-panel region-group-card">' +
+                    '<div class="panel-head panel-head--table"><div><h3>' + escapeHtml(region) + ' Region</h3><p class="table-subtext">Region name, lead count, and grouped leads.</p></div><span class="panel-chip">' + escapeHtml(groupedRows[region].length) + ' leads</span></div>' +
+                    renderCompactTable(groupedRows[region], tableHeaders) +
+                    '</article>';
+            }).join('');
+        }
 
         if (confirmAssignButton) {
             confirmAssignButton.addEventListener('click', function () {
-                window.location.href = apiUrl;
+                var nextUrl = apiUrl + '?region_summary_json=' + encodeURIComponent(JSON.stringify(regionSummary));
+                window.location.href = nextUrl;
             });
         }
     }
@@ -350,64 +414,130 @@ document.addEventListener('DOMContentLoaded', function () {
         var assignmentGrid = assignmentRoot.querySelector('[data-assignment-grid]');
         var submitButton = assignmentRoot.querySelector('[data-assignment-submit]');
         var successBox = assignmentRoot.querySelector('[data-assignment-success]');
-        var assignmentState = readState();
-        var groupedLeads = {};
+        var errorBox = assignmentRoot.querySelector('[data-assignment-error]');
+        var successMessage = assignmentRoot.querySelector('[data-assignment-success-message]');
+        var errorMessage = assignmentRoot.querySelector('[data-assignment-error-message]');
+        var loader = document.getElementById('upload-loader');
+        var summary = readJsonAttribute(assignmentRoot, 'data-region-summary');
+        var submitUrl = assignmentRoot.getAttribute('data-submit-url');
+        var successRedirect = assignmentRoot.getAttribute('data-success-redirect') || '/leads';
+        var selectedColleagues = [];
 
-        readJsonScript(assignmentRoot, '[data-assignment-summary]').forEach(function (item) {
-            groupedLeads[item.region] = Array(item.total).fill({});
-        });
-
-        assignmentState.assignments = assignmentState.assignments || {};
-
-        if (assignmentGrid) {
-            var regions = Object.keys(groupedLeads);
-
-            if (regions.length === 0) {
-                assignmentGrid.innerHTML = '<article class="info-panel assignment-card"><p class="hero-label">No regions</p><h3>Upload leads first</h3><p>Region assignments will appear here after a lead file is uploaded and grouped.</p></article>';
-            } else {
-                assignmentGrid.innerHTML = regions.map(function (region) {
-                    var options = ['<option value="">Select Colleague</option>'].concat((colleaguesByRegion[region] || []).map(function (name) {
-                        var selected = assignmentState.assignments[region] === name ? ' selected' : '';
-                        return '<option value="' + escapeHtml(name) + '"' + selected + '>' + escapeHtml(name) + '</option>';
-                    })).join('');
-
-                    return '<article class="info-panel assignment-card">' +
-                        '<p class="hero-label">' + escapeHtml(region) + '</p>' +
-                        '<h3>' + escapeHtml(region) + ' Region</h3>' +
-                        '<p>' + escapeHtml(groupedLeads[region].length) + ' leads ready for assignment.</p>' +
-                        '<select class="form-select assignment-select" data-region-select="' + escapeHtml(region) + '">' + options + '</select>' +
-                        '</article>';
-                }).join('');
+        function setLoadingState(isLoading) {
+            if (loader) {
+                loader.style.display = isLoading ? 'block' : 'none';
             }
+            if (!submitButton) {
+                return;
+            }
+            submitButton.disabled = isLoading;
+            submitButton.textContent = isLoading ? 'Submitting...' : 'Submit';
+        }
+
+        function hideMessages() {
+            if (successBox) {
+                successBox.classList.add('d-none');
+            }
+            if (errorBox) {
+                errorBox.classList.add('d-none');
+            }
+        }
+
+        function getSelectedColleagues() {
+            var selected = [];
 
             assignmentGrid.querySelectorAll('[data-region-select]').forEach(function (select) {
-                select.addEventListener('change', function () {
-                    assignmentState.assignments[select.getAttribute('data-region-select')] = select.value;
-                    writeState(assignmentState);
+                readSelectValues(select).forEach(function (value) {
+                    if (selected.indexOf(value) === -1) {
+                        selected.push(value);
+                    }
                 });
+            });
+
+            return selected;
+        }
+
+        function syncSelections(values, sourceSelect) {
+            if (values.indexOf('NONE') !== -1) {
+                values = [];
+            }
+
+            selectedColleagues = values.slice();
+
+            assignmentGrid.querySelectorAll('[data-region-select]').forEach(function (select) {
+                Array.from(select.options).forEach(function (option) {
+                    option.selected = values.indexOf(option.value) !== -1;
+                });
+
+                if (typeof window.jQuery !== 'undefined') {
+                    window.jQuery(select).trigger('change.select2');
+                }
             });
         }
 
+        function renderAssignmentCards() {
+            assignmentGrid.innerHTML = regionOrder.map(function (region) {
+                var summaryItem = summary.find(function (entry) {
+                    return entry.region === region;
+                }) || { region: region, total: 0 };
+
+                return '<article class="info-panel assignment-card" data-region-card data-region="' + escapeHtml(region) + '">' +
+                    '<p class="hero-label">' + escapeHtml(region) + '</p>' +
+                    '<h3>' + escapeHtml(region) + ' Region</h3>' +
+                    '<p>' + (Number(summaryItem.total) > 0 ? escapeHtml(summaryItem.total) + ' leads ready for assignment.' : 'No leads ready for assignment.') + '</p>' +
+                    '<label class="form-label">Select Colleagues</label>' +
+                    '<select class="form-select assignment-select region-colleague-select" data-region-select="' + escapeHtml(region) + '" multiple></select>' +
+                    '</article>';
+            }).join('');
+
+            assignmentGrid.querySelectorAll('[data-region-select]').forEach(function (select) {
+                populateDropdown(select, selectedColleagues);
+            });
+
+            initializeGlobalColleagueSelects(assignmentGrid, function (values, sourceSelect) {
+                syncSelections(values, sourceSelect);
+            });
+        }
+        renderAssignmentCards();
+
         if (submitButton) {
             submitButton.addEventListener('click', function () {
-                var regions = Object.keys(groupedLeads);
-                var allSelected = regions.length > 0 && regions.every(function (region) {
-                    return assignmentState.assignments[region];
+                hideMessages();
+
+                selectedColleagues = getSelectedColleagues();
+
+                if (selectedColleagues.length === 0) {
+                    if (errorBox && errorMessage) {
+                        errorMessage.textContent = 'Please select at least one colleague.';
+                        errorBox.classList.remove('d-none');
+                    }
+                    return;
+                }
+
+                setLoadingState(true);
+                fetchJson(submitUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        colleagues: selectedColleagues
+                    })
+                }).then(function (response) {
+                    if (response.status === 'success') {
+                        window.location.href = successRedirect || '/leads';
+                        return;
+                    }
+
+                    throw new Error(response.message || 'Upload failed');
+                }).catch(function (error) {
+                    if (errorBox && errorMessage) {
+                        errorMessage.textContent = error.message || 'Upload failed';
+                        errorBox.classList.remove('d-none');
+                    }
+                }).finally(function () {
+                    setLoadingState(false);
                 });
-
-                if (regions.length === 0) {
-                    window.alert('Upload and group a lead file before assigning colleagues.');
-                    return;
-                }
-
-                if (!allSelected) {
-                    window.alert('Please select a colleague for each region before submitting.');
-                    return;
-                }
-
-                if (successBox) {
-                    successBox.classList.remove('d-none');
-                }
             });
         }
     }
@@ -426,3 +556,15 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 });
+
+
+
+
+
+
+
+
+
+
+
+
