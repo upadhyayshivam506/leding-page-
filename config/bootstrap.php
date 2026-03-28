@@ -2,8 +2,6 @@
 
 declare(strict_types=1);
 
-session_start();
-
 spl_autoload_register(static function (string $class): void {
     $prefixes = [
         'Config\\' => __DIR__,
@@ -30,3 +28,20 @@ require_once __DIR__ . '/helpers.php';
 require_once dirname(__DIR__) . '/helpers/region-helper.php';
 
 Config\Env::load(dirname(__DIR__) . '/.env');
+
+$sessionPath = env('SESSION_SAVE_PATH');
+if ($sessionPath === null || trim($sessionPath) === '') {
+    $sessionPath = dirname(__DIR__) . '/uploads/sessions';
+}
+
+if (!is_dir($sessionPath)) {
+    mkdir($sessionPath, 0775, true);
+}
+
+if (is_dir($sessionPath) && is_writable($sessionPath)) {
+    session_save_path($sessionPath);
+}
+
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}

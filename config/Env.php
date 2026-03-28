@@ -20,15 +20,28 @@ final class Env
                 continue;
             }
 
+            if (str_starts_with($trimmed, 'export ')) {
+                $trimmed = trim(substr($trimmed, 7));
+            }
+
+            if (!str_contains($trimmed, '=')) {
+                continue;
+            }
+
             [$key, $value] = array_pad(explode('=', $trimmed, 2), 2, '');
             $key = trim($key);
             $value = trim($value);
+
+            if ($key === '') {
+                continue;
+            }
 
             if ($value !== '' && (($value[0] === '"' && substr($value, -1) === '"') || ($value[0] === "'" && substr($value, -1) === "'"))) {
                 $value = substr($value, 1, -1);
             }
 
             $_ENV[$key] = $value;
+            $_SERVER[$key] = $value;
             putenv($key . '=' . $value);
         }
     }

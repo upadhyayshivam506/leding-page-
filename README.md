@@ -1,9 +1,9 @@
-﻿# Leads API Project
+# Leads API Project
 
 Starter scaffold for the Leads API Project with:
 
 - MilesWeb-friendly PHP folder structure
-- Admin authentication using MySQL on XAMPP, with `.env` fallback credentials
+- Admin authentication using MySQL with `.env`-based configuration
 - Session-protected dashboard
 - Responsive login page built with HTML, CSS, JavaScript, and Bootstrap 5
 
@@ -14,8 +14,8 @@ Starter scaffold for the Leads API Project with:
 - `models/` database models
 - `services/` auth service
 - `static/` CSS, JS, images
-- `Templates/` PHP view templates
-- `uploads/` future Excel uploads
+- `Templates/` HTML view templates
+- `uploads/` upload storage
 - `index.php` front controller
 - `routes.php` simple route map
 - `.env` app and database credentials
@@ -26,13 +26,11 @@ Use any PHP server that points to this folder, or run it through XAMPP/Apache.
 
 ### XAMPP setup
 
-1. Copy this project into your XAMPP web root, for example:
-   `htdocs/Lead_Management_-_Integration`
+1. Copy this project into your XAMPP web root, for example `htdocs\leding-page-`.
 2. Make sure Apache is running in XAMPP.
 3. Start MySQL in XAMPP.
-4. Import [database/schema.sql](/Users/apple/Desktop/lending page/Lead_Management_-_Integration/database/schema.sql) into phpMyAdmin or MySQL.
-5. Open:
-   `http://localhost:8080/Lead_Management_-_Integration/login`
+4. Import `database/schema.sql` into phpMyAdmin or MySQL.
+5. Open `http://localhost/leding-page-/login`.
 
 If Apache rewrite rules are enabled, the included `.htaccess` will route requests through `index.php`.
 
@@ -48,30 +46,45 @@ Then open `http://localhost:8000/login`.
 
 ## Database settings
 
-Update `.env`:
+The app reads database settings from `.env` through `config/Database.php`. You do not need to change the PHP code when moving between XAMPP and MilesWeb. Only update the `.env` values for that environment.
+
+### Local XAMPP example
 
 ```env
 DB_HOST="127.0.0.1"
-DB_PORT="3000"
+DB_PORT="3306"
 DB_NAME="lead_management"
 DB_USER="root"
 DB_PASSWORD=""
-DB_SOCKET="/Applications/XAMPP/xamppfiles/var/mysql/mysql.sock"
+DB_SOCKET=""
+DB_CHARSET="utf8mb4"
+SESSION_SAVE_PATH=""
 ```
 
-XAMPP uses `root` with an empty password by default unless you changed it.
+XAMPP on Windows usually works with `127.0.0.1` and port `3306`. Keep `DB_SOCKET` empty unless you were given a Unix socket path.
+
+### MilesWeb example
+
+```env
+DB_HOST="localhost"
+DB_PORT="3306"
+DB_NAME="your_milesweb_database"
+DB_USER="your_milesweb_database_user"
+DB_PASSWORD="your_milesweb_database_password"
+DB_SOCKET=""
+DB_CHARSET="utf8mb4"
+SESSION_SAVE_PATH=""
+```
+
+If MilesWeb gives you a different MySQL hostname in cPanel, use that value instead of `localhost`.
+
+If `SESSION_SAVE_PATH` is empty, the app automatically stores sessions in `uploads/sessions`, which avoids permission problems with default PHP temp folders on many local and shared-host setups.
 
 ## Admin login
 
-Default imported admin:
+Default fallback login from `.env`:
 
 - Email: `admin@example.com`
-- Password: `password`
+- Password: `ChangeThisPassword123`
 
 The app first checks the `admins` table in MySQL. If the database is unavailable, it falls back to `ADMIN_EMAIL` and `ADMIN_PASSWORD` from `.env`.
-
-## Next steps
-
-- Build lead upload module
-- Add Excel parsing and mapping
-- Add API push logs and dashboard metrics
