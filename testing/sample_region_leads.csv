@@ -1,0 +1,9 @@
+name,email,phone,course,specialization,campus,college_name,city,state
+Aman Verma,aman.verma@example.com,9876543210,MBA,Finance,North Campus,North Star Institute,Delhi,Delhi
+Pooja Singh,pooja.singh@example.com,9876543211,BBA,Marketing,North Campus,North Star Institute,Jaipur,Rajasthan
+Rohit Nair,rohit.nair@example.com,9876543212,BCA,Data Science,South Campus,Southern Tech College,Bengaluru,Karnataka
+Divya Reddy,divya.reddy@example.com,9876543213,MCA,AI,South Campus,Southern Tech College,Hyderabad,Telangana
+Sourav Das,sourav.das@example.com,9876543214,BCom,Accounting,East Campus,Eastern Commerce College,Kolkata,West Bengal
+Ankita Jha,ankita.jha@example.com,9876543215,BSc,Analytics,East Campus,Eastern Commerce College,Patna,Bihar
+Mehul Shah,mehul.shah@example.com,9876543216,MBA,Business Analytics,West Campus,Western Business School,Pune,Maharashtra
+Ritu Patel,ritu.patel@example.com,9876543217,BBA,Operations,West Campus,Western Business School,Ahmedabad,Gujarat

@@ -1,0 +1,9 @@
+name,email,phone,course,specialization,campus,college_name,city,state
+Karan Malhotra,karan.malhotra@example.com,9876500010,MBA,HR,North Campus,Capital Management Institute,Lucknow,Uttar Pradesh
+Simran Kaur,simran.kaur@example.com,9876500011,BBA,Finance,North Campus,Capital Management Institute,Chandigarh,Punjab
+Arjun Iyer,arjun.iyer@example.com,9876500012,BCA,Cloud Computing,South Campus,Peninsula Tech Academy,Chennai,Tamil Nadu
+Madhavi Rao,madhavi.rao@example.com,9876500013,MCA,Cyber Security,South Campus,Peninsula Tech Academy,Kochi,Kerala
+Priyanka Saha,priyanka.saha@example.com,9876500014,BCom,Banking,East Campus,Riverdale Commerce College,Ranchi,Jharkhand
+Nilesh Bora,nilesh.bora@example.com,9876500015,BSc,Statistics,East Campus,Riverdale Commerce College,Guwahati,Assam
+Jay Mehta,jay.mehta@example.com,9876500016,MBA,International Business,West Campus,Frontier Business School,Surat,Gujarat
+Sneha Deshmukh,sneha.deshmukh@example.com,9876500017,BBA,Supply Chain,West Campus,Frontier Business School,Panaji,Goa
