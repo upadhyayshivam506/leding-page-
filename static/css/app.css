@@ -411,6 +411,21 @@ a {
     border: 0;
 }
 
+.sidebar-link__icon--logs::before {
+    width: 14px;
+    height: 16px;
+    inset: 1px auto auto 3px;
+}
+
+.sidebar-link__icon--logs::after {
+    width: 10px;
+    height: 2px;
+    inset: 8px 3px auto auto;
+    background: currentColor;
+    border: 0;
+    box-shadow: 0 5px 0 currentColor;
+}
+
 .sidebar-user {
     display: flex;
     align-items: center;
@@ -1497,6 +1512,19 @@ a {
 
 .assignment-card {
     padding: 24px;
+}
+
+.assignment-college-list {
+    display: grid;
+    gap: 10px;
+    padding-left: 18px;
+    margin: 16px 0 0;
+    color: rgba(247, 245, 255, 0.8);
+}
+
+.assignment-empty-text {
+    margin: 16px 0 0;
+    color: rgba(247, 245, 255, 0.62);
 }
 
 .assignment-select {

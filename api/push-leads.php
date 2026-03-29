@@ -17,12 +17,12 @@ try {
         throw new InvalidArgumentException('Invalid JSON payload.');
     }
 
-    $colleagues = $payload['colleagues'] ?? null;
-    if (!is_array($colleagues)) {
-        throw new InvalidArgumentException('Colleagues payload is required.');
+    $batchId = trim((string) ($payload['batch_id'] ?? ''));
+    if ($batchId === '') {
+        throw new InvalidArgumentException('Batch ID is required.');
     }
 
-    $result = process_selected_colleagues_push($colleagues);
+    $result = process_batch_region_push_to_all_colleges($batchId);
 
     echo json_encode([
         'status' => 'success',

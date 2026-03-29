@@ -333,6 +333,19 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    var logsRoot = document.querySelector('[data-lead-push-logs-table]');
+    if (logsRoot) {
+        renderTable({
+            headers: readJsonScript(logsRoot, '[data-table-headers]'),
+            rows: readJsonScript(logsRoot, '[data-table-rows]'),
+            head: logsRoot.querySelector('[data-table-head]'),
+            body: logsRoot.querySelector('[data-table-body]'),
+            countNode: logsRoot.querySelector('[data-table-count]'),
+            paginationRoot: logsRoot.querySelector('[data-table-pagination]'),
+            emptyMessage: 'No lead push logs are available yet.'
+        });
+    }
+
     var previewRoot = document.querySelector('[data-mapping-preview]');
     if (previewRoot) {
         var previewRows = readJsonScript(previewRoot, '[data-preview-rows]');
@@ -421,7 +434,29 @@ document.addEventListener('DOMContentLoaded', function () {
         var summary = readJsonAttribute(assignmentRoot, 'data-region-summary');
         var submitUrl = assignmentRoot.getAttribute('data-submit-url');
         var successRedirect = assignmentRoot.getAttribute('data-success-redirect') || '/leads';
-        var selectedColleagues = [];
+        var batchId = assignmentRoot.getAttribute('data-batch-id') || '';
+
+        function getRegionColleagues(region) {
+            return colleagueOptions.filter(function (option) {
+                if (!option.value || option.value === 'NONE') {
+                    return false;
+                }
+
+                if (region === 'North') {
+                    return ['IBI', 'IILM', 'GNOIT', 'DBUU', 'JKBS'].indexOf(option.value) !== -1;
+                }
+
+                if (region === 'South') {
+                    return ['Sunstone', 'NITTE', 'KCM', 'GIBS', 'Alliance'].indexOf(option.value) !== -1;
+                }
+
+                if (region === 'West / Others') {
+                    return ['KKMU', 'PPSU', 'PBS', 'PCU', 'Lexicon'].indexOf(option.value) !== -1;
+                }
+
+                return false;
+            });
+        }
 
         function setLoadingState(isLoading) {
             if (loader) {
@@ -443,60 +478,29 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         }
 
-        function getSelectedColleagues() {
-            var selected = [];
-
-            assignmentGrid.querySelectorAll('[data-region-select]').forEach(function (select) {
-                readSelectValues(select).forEach(function (value) {
-                    if (selected.indexOf(value) === -1) {
-                        selected.push(value);
-                    }
-                });
-            });
-
-            return selected;
-        }
-
-        function syncSelections(values, sourceSelect) {
-            if (values.indexOf('NONE') !== -1) {
-                values = [];
-            }
-
-            selectedColleagues = values.slice();
-
-            assignmentGrid.querySelectorAll('[data-region-select]').forEach(function (select) {
-                Array.from(select.options).forEach(function (option) {
-                    option.selected = values.indexOf(option.value) !== -1;
-                });
-
-                if (typeof window.jQuery !== 'undefined') {
-                    window.jQuery(select).trigger('change.select2');
-                }
-            });
-        }
-
         function renderAssignmentCards() {
             assignmentGrid.innerHTML = regionOrder.map(function (region) {
                 var summaryItem = summary.find(function (entry) {
                     return entry.region === region;
                 }) || { region: region, total: 0 };
+                var colleagues = getRegionColleagues(region);
+                var collegeList = colleagues.length > 0
+                    ? '<ul class="assignment-college-list">' + colleagues.map(function (colleague) {
+                        return '<li>' + escapeHtml(colleague.label) + '</li>';
+                    }).join('') + '</ul>'
+                    : '<p class="assignment-empty-text">No colleges configured for this region.</p>';
+                var routingText = Number(summaryItem.total) > 0 && colleagues.length > 0
+                    ? escapeHtml(summaryItem.total) + ' leads will be sent to all ' + escapeHtml(colleagues.length) + ' colleges in this region.'
+                    : 'No API push will happen for this region.';
 
                 return '<article class="info-panel assignment-card" data-region-card data-region="' + escapeHtml(region) + '">' +
                     '<p class="hero-label">' + escapeHtml(region) + '</p>' +
                     '<h3>' + escapeHtml(region) + ' Region</h3>' +
-                    '<p>' + (Number(summaryItem.total) > 0 ? escapeHtml(summaryItem.total) + ' leads ready for assignment.' : 'No leads ready for assignment.') + '</p>' +
-                    '<label class="form-label">Select Colleagues</label>' +
-                    '<select class="form-select assignment-select region-colleague-select" data-region-select="' + escapeHtml(region) + '" multiple></select>' +
+                    '<p>' + routingText + '</p>' +
+                    '<label class="form-label">Configured Colleges</label>' +
+                    collegeList +
                     '</article>';
             }).join('');
-
-            assignmentGrid.querySelectorAll('[data-region-select]').forEach(function (select) {
-                populateDropdown(select, selectedColleagues);
-            });
-
-            initializeGlobalColleagueSelects(assignmentGrid, function (values, sourceSelect) {
-                syncSelections(values, sourceSelect);
-            });
         }
         renderAssignmentCards();
 
@@ -504,11 +508,9 @@ document.addEventListener('DOMContentLoaded', function () {
             submitButton.addEventListener('click', function () {
                 hideMessages();
 
-                selectedColleagues = getSelectedColleagues();
-
-                if (selectedColleagues.length === 0) {
+                if (!batchId) {
                     if (errorBox && errorMessage) {
-                        errorMessage.textContent = 'Please select at least one colleague.';
+                        errorMessage.textContent = 'Missing upload batch. Please upload the file again.';
                         errorBox.classList.remove('d-none');
                     }
                     return;
@@ -521,7 +523,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        colleagues: selectedColleagues
+                        batch_id: batchId
                     })
                 }).then(function (response) {
                     if (response.status === 'success') {
