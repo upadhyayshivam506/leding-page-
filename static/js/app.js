@@ -175,30 +175,11 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    var colleagueOptions = [
-        { value: '', label: 'Select Colleague' },
-        { value: 'NONE', label: 'None' },
-        { value: 'IBI', label: 'Indore Business Institute' },
-        { value: 'Sunstone', label: 'Sunstone Education' },
-        { value: 'IILM', label: 'Institute for Integrated Learning in Management' },
-        { value: 'NITTE', label: 'Nitte University' },
-        { value: 'KKMU', label: 'K K Modi University' },
-        { value: 'KCM', label: 'KCM Bangalore' },
-        { value: 'PPSU', label: 'P P Savani University' },
-        { value: 'GNOIT', label: 'Greater Noida Institute of Technology' },
-        { value: 'PBS', label: 'Pune Business School' },
-        { value: 'DBUU', label: 'Dev Bhoomi Uttarakhand University' },
-        { value: 'PCU', label: 'Pimpri Chinchwad University' },
-        { value: 'JKBS', label: 'JK Business School' },
-        { value: 'GIBS', label: 'Global Institute of Business Studies' },
-        { value: 'Alliance', label: 'Alliance University' },
-        { value: 'Lexicon', label: 'Lexicon Management Institute' }
-    ];
-
-    function populateDropdown(selectElement, selectedValues) {
+    function populateDropdown(selectElement, selectedValues, options) {
         var values = Array.isArray(selectedValues) ? selectedValues : [];
+        var availableOptions = Array.isArray(options) ? options : [];
 
-        selectElement.innerHTML = colleagueOptions.map(function (option) {
+        selectElement.innerHTML = availableOptions.map(function (option) {
             var isSelected = values.indexOf(option.value) !== -1;
             return '<option value="' + escapeHtml(option.value) + '"' + (isSelected ? ' selected' : '') + '>' + escapeHtml(option.label) + '</option>';
         }).join('');
@@ -227,14 +208,14 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    function initializeGlobalColleagueSelects(root, onChange) {
+    function initializeRegionColleagueSelects(root, onChange) {
         if (!root) {
             return;
         }
 
         root.querySelectorAll('.region-colleague-select').forEach(function (selectElement) {
             selectElement.addEventListener('change', function () {
-                onChange(readSelectValues(selectElement), selectElement);
+                onChange((selectElement.getAttribute('data-region-select') || ''), readSelectValues(selectElement), selectElement);
             });
         });
 
@@ -256,10 +237,17 @@ document.addEventListener('DOMContentLoaded', function () {
                 allowClear: true
             });
 
-            select.off('change.globalColleagues').on('change.globalColleagues', function () {
-                onChange(readSelectValues(this), this);
+            select.off('change.regionColleagues').on('change.regionColleagues', function () {
+                onChange((this.getAttribute('data-region-select') || ''), readSelectValues(this), this);
             });
         });
+    }
+
+    function regionFieldId(region) {
+        return 'colleagues_' + String(region || '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '_')
+            .replace(/^_+|_+$/g, '');
     }
 
     var toggle = document.querySelector('[data-password-toggle]');
@@ -419,9 +407,21 @@ document.addEventListener('DOMContentLoaded', function () {
         var errorMessage = assignmentRoot.querySelector('[data-assignment-error-message]');
         var loader = document.getElementById('upload-loader');
         var summary = readJsonAttribute(assignmentRoot, 'data-region-summary');
+        var colleagueCatalog = readJsonAttribute(assignmentRoot, 'data-colleague-catalog');
+        var batchId = assignmentRoot.getAttribute('data-batch-id') || '';
         var submitUrl = assignmentRoot.getAttribute('data-submit-url');
         var successRedirect = assignmentRoot.getAttribute('data-success-redirect') || '/leads';
-        var selectedColleagues = [];
+        var regionLeadCounts = {};
+        var selectedColleaguesByRegion = {};
+
+        regionOrder.forEach(function (region) {
+            var summaryItem = summary.find(function (entry) {
+                return entry.region === region;
+            }) || { total: 0 };
+
+            regionLeadCounts[region] = Number(summaryItem.total) || 0;
+            selectedColleaguesByRegion[region] = [];
+        });
 
         function setLoadingState(isLoading) {
             if (loader) {
@@ -443,59 +443,150 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         }
 
-        function getSelectedColleagues() {
-            var selected = [];
+        function getRegionCatalogItems(region) {
+            var catalog = colleagueCatalog && typeof colleagueCatalog === 'object' ? colleagueCatalog[region] : [];
+            var items = Array.isArray(catalog)
+                ? catalog
+                : (catalog && typeof catalog === 'object' ? Object.keys(catalog).map(function (key) {
+                    return catalog[key];
+                }) : []);
 
-            assignmentGrid.querySelectorAll('[data-region-select]').forEach(function (select) {
-                readSelectValues(select).forEach(function (value) {
-                    if (selected.indexOf(value) === -1) {
-                        selected.push(value);
-                    }
-                });
+            return items.filter(function (item) {
+                return item && (item.id != null || item.name != null);
             });
-
-            return selected;
         }
 
-        function syncSelections(values, sourceSelect) {
-            if (values.indexOf('NONE') !== -1) {
-                values = [];
+        function regionHasConfiguredColleagues(region) {
+            return getRegionCatalogItems(region).some(function (item) {
+                return String(item && item.id != null ? item.id : '') !== '';
+            });
+        }
+
+        function getRegionOptions(region) {
+            var options = getRegionCatalogItems(region).map(function (item) {
+                return {
+                    value: String(item && item.id != null ? item.id : ''),
+                    label: String(item && item.name != null ? item.name : item && item.id != null ? item.id : '')
+                };
+            });
+
+            options = options.filter(function (option) {
+                return option.value !== '';
+            });
+
+            if (options.length === 0 && regionLeadCounts[region] > 0) {
+                return [{ value: '', label: 'No colleagues configured' }];
             }
 
-            selectedColleagues = values.slice();
+            return options;
+        }
 
-            assignmentGrid.querySelectorAll('[data-region-select]').forEach(function (select) {
-                Array.from(select.options).forEach(function (option) {
-                    option.selected = values.indexOf(option.value) !== -1;
-                });
-
-                if (typeof window.jQuery !== 'undefined') {
-                    window.jQuery(select).trigger('change.select2');
-                }
+        function clearRegionErrors() {
+            assignmentGrid.querySelectorAll('[data-region-card]').forEach(function (card) {
+                card.classList.remove('assignment-card--error');
             });
+
+            assignmentGrid.querySelectorAll('[data-region-error]').forEach(function (message) {
+                message.textContent = '';
+                message.classList.add('d-none');
+            });
+        }
+
+        function showRegionError(region, message) {
+            var card = assignmentGrid.querySelector('[data-region-card][data-region="' + region + '"]');
+            if (!card) {
+                return;
+            }
+
+            var errorNode = card.querySelector('[data-region-error]');
+            card.classList.add('assignment-card--error');
+
+            if (errorNode) {
+                errorNode.textContent = message;
+                errorNode.classList.remove('d-none');
+            }
+        }
+
+        function validateAssignments() {
+            clearRegionErrors();
+
+            for (var index = 0; index < regionOrder.length; index += 1) {
+                var region = regionOrder[index];
+                if ((regionLeadCounts[region] || 0) === 0) {
+                    continue;
+                }
+
+                if (!regionHasConfiguredColleagues(region)) {
+                    continue;
+                }
+
+                if (!Array.isArray(selectedColleaguesByRegion[region]) || selectedColleaguesByRegion[region].length === 0) {
+                    showRegionError(region, 'Please select at least one colleague for regions that have leads.');
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        function buildAssignmentsPayload() {
+            var assignments = {};
+
+            regionOrder.forEach(function (region) {
+                assignments[region] = Array.isArray(selectedColleaguesByRegion[region]) ? selectedColleaguesByRegion[region].slice() : [];
+            });
+
+            return assignments;
         }
 
         function renderAssignmentCards() {
             assignmentGrid.innerHTML = regionOrder.map(function (region) {
-                var summaryItem = summary.find(function (entry) {
-                    return entry.region === region;
-                }) || { region: region, total: 0 };
+                var leadsCount = regionLeadCounts[region] || 0;
+                var fieldId = regionFieldId(region);
+                var hasConfiguredColleagues = regionHasConfiguredColleagues(region);
+                var isDisabled = leadsCount === 0 || !hasConfiguredColleagues;
+                var helperText = 'Select at least one colleague for this region.';
+                var statusText = leadsCount > 0
+                    ? escapeHtml(leadsCount) + ' leads ready for assignment.'
+                    : 'No leads ready for assignment.';
+
+                if (leadsCount === 0) {
+                    helperText = 'No leads available. Selection not required.';
+                } else if (!hasConfiguredColleagues) {
+                    helperText = 'No colleagues configured for this region. Leads will not be transferred.';
+                    statusText = escapeHtml(leadsCount) + ' leads ready for assignment. No colleagues configured for this region.';
+                    selectedColleaguesByRegion[region] = [];
+                }
 
                 return '<article class="info-panel assignment-card" data-region-card data-region="' + escapeHtml(region) + '">' +
                     '<p class="hero-label">' + escapeHtml(region) + '</p>' +
                     '<h3>' + escapeHtml(region) + ' Region</h3>' +
-                    '<p>' + (Number(summaryItem.total) > 0 ? escapeHtml(summaryItem.total) + ' leads ready for assignment.' : 'No leads ready for assignment.') + '</p>' +
-                    '<label class="form-label">Select Colleagues</label>' +
-                    '<select class="form-select assignment-select region-colleague-select" data-region-select="' + escapeHtml(region) + '" multiple></select>' +
+                    '<p>' + statusText + '</p>' +
+                    '<label class="form-label" for="' + escapeHtml(fieldId) + '">Select Colleagues</label>' +
+                    '<select class="form-select assignment-select region-colleague-select" name="colleagues[' + escapeHtml(region) + '][]" id="' + escapeHtml(fieldId) + '" data-region-select="' + escapeHtml(region) + '"' + (isDisabled ? ' disabled' : '') + ' multiple></select>' +
+                    '<p class="assignment-card__hint' + (isDisabled ? ' assignment-card__hint--muted' : '') + '">' + escapeHtml(helperText) + '</p>' +
+                    '<p class="assignment-card__error d-none" data-region-error></p>' +
                     '</article>';
             }).join('');
 
             assignmentGrid.querySelectorAll('[data-region-select]').forEach(function (select) {
-                populateDropdown(select, selectedColleagues);
+                var region = select.getAttribute('data-region-select') || '';
+                populateDropdown(select, selectedColleaguesByRegion[region], getRegionOptions(region));
             });
 
-            initializeGlobalColleagueSelects(assignmentGrid, function (values, sourceSelect) {
-                syncSelections(values, sourceSelect);
+            initializeRegionColleagueSelects(assignmentGrid, function (region, values) {
+                selectedColleaguesByRegion[region] = values.slice();
+
+                var card = assignmentGrid.querySelector('[data-region-card][data-region="' + region + '"]');
+                if (card && values.length > 0) {
+                    card.classList.remove('assignment-card--error');
+
+                    var errorNode = card.querySelector('[data-region-error]');
+                    if (errorNode) {
+                        errorNode.textContent = '';
+                        errorNode.classList.add('d-none');
+                    }
+                }
             });
         }
         renderAssignmentCards();
@@ -503,14 +594,9 @@ document.addEventListener('DOMContentLoaded', function () {
         if (submitButton) {
             submitButton.addEventListener('click', function () {
                 hideMessages();
+                clearRegionErrors();
 
-                selectedColleagues = getSelectedColleagues();
-
-                if (selectedColleagues.length === 0) {
-                    if (errorBox && errorMessage) {
-                        errorMessage.textContent = 'Please select at least one colleague.';
-                        errorBox.classList.remove('d-none');
-                    }
+                if (!validateAssignments()) {
                     return;
                 }
 
@@ -521,7 +607,8 @@ document.addEventListener('DOMContentLoaded', function () {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        colleagues: selectedColleagues
+                        batch_id: batchId,
+                        assignments: buildAssignmentsPayload()
                     })
                 }).then(function (response) {
                     if (response.status === 'success') {

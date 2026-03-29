@@ -1499,6 +1499,11 @@ a {
     padding: 24px;
 }
 
+.assignment-card--error {
+    border-color: rgba(255, 107, 107, 0.65);
+    box-shadow: inset 0 0 0 1px rgba(255, 107, 107, 0.15);
+}
+
 .assignment-select {
     margin-top: 16px;
     height: 52px;
@@ -1517,6 +1522,29 @@ a {
 
 .assignment-select option {
     color: #111;
+}
+
+.assignment-select:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.assignment-card__hint,
+.assignment-card__error {
+    margin: 12px 0 0;
+    font-size: 0.92rem;
+}
+
+.assignment-card__hint {
+    color: rgba(247, 245, 255, 0.72);
+}
+
+.assignment-card__hint--muted {
+    color: rgba(247, 245, 255, 0.58);
+}
+
+.assignment-card__error {
+    color: #ff9d9d;
 }
 
 .assignment-success {
