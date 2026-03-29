@@ -17,12 +17,19 @@ try {
         throw new InvalidArgumentException('Invalid JSON payload.');
     }
 
-    $colleagues = $payload['colleagues'] ?? null;
-    if (!is_array($colleagues)) {
-        throw new InvalidArgumentException('Colleagues payload is required.');
-    }
+    $assignments = $payload['assignments'] ?? null;
+    $batchId = trim((string) ($payload['batch_id'] ?? ''));
 
-    $result = process_selected_colleagues_push($colleagues);
+    if (is_array($assignments)) {
+        $result = process_region_assignments($batchId, $assignments);
+    } else {
+        $colleagues = $payload['colleagues'] ?? null;
+        if (!is_array($colleagues)) {
+            throw new InvalidArgumentException('Assignments payload is required.');
+        }
+
+        $result = process_selected_colleagues_push($colleagues);
+    }
 
     echo json_encode([
         'status' => 'success',
