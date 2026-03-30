@@ -7,21 +7,40 @@
     <div class="mapping-step"><span>1</span><strong>Upload</strong></div>
     <div class="mapping-step"><span>2</span><strong>Region</strong></div>
     <div class="mapping-step"><span>3</span><strong>Assign</strong></div>
+    <div class="mapping-step"><span>4</span><strong>API Duration</strong></div>
 </section>
 
-<section class="assignment-page" data-colleague-assignment data-region-summary="{{region_summary_attr_json}}" data-colleague-catalog="{{colleague_catalog_attr_json}}" data-fetch-url="{{fetch_colleagues_url}}" data-submit-url="{{assign_colleagues_url}}" data-success-redirect="{{leads_url}}" data-batch-id="{{uploaded_batch_id}}">
-    <div class="assignment-grid" data-assignment-grid></div>
-    <div id="upload-loader" style="display:none;">Pushing region leads to configured college APIs...</div>
-    <div class="assignment-success d-none" data-assignment-success>
-        <h3>Lead push completed.</h3>
-        <p data-assignment-success-message>All configured region-wise API pushes were processed successfully.</p>
-    </div>
-    <div class="assignment-success d-none" data-assignment-error>
-        <h3>Lead push failed.</h3>
-        <p data-assignment-error-message>Please review the error and try again.</p>
-    </div>
+<section class="assignment-page" data-region-colleagues-page data-region-summary="{{region_summary_attr_json}}" data-region-rows="{{region_rows_attr_json}}" data-colleague-catalog="{{colleague_catalog_attr_json}}" data-confirm-assign-url="{{confirm_assign_url}}" data-api-duration-page-url="{{mapping_api_duration_url}}" data-region-assignments="{{region_assignments_attr_json}}">
     <div class="mapping-actions mapping-actions--footer">
-        <a href="{{mapping_region_url}}" class="panel-link topbar-action-link">Back</a>
-        <button type="button" class="btn dashboard-logout" data-assignment-submit id="submit-button">Push Region Leads</button>
+        <a href="{{mapping_region_url}}" class="btn dashboard-logout">Courses Mapping</a>
+    </div>
+
+    <article class="table-panel mapping-table-panel">
+        <div class="panel-head panel-head--table">
+            <div>
+                <h3>Region Summary</h3>
+                <p class="table-subtext">All regions stay visible, including regions with 0 leads, so colleagues can still be assigned.</p>
+            </div>
+            <span class="panel-chip">Summary</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table admin-table align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Region</th>
+                        <th>Total Leads</th>
+                    </tr>
+                </thead>
+                <tbody data-region-summary-body></tbody>
+            </table>
+        </div>
+    </article>
+
+    <section class="assignment-grid" data-assignment-grid></section>
+
+    <p class="mapping-preview-message d-none" data-assign-message></p>
+
+    <div class="mapping-actions mapping-actions--footer">
+        <button type="button" class="btn dashboard-logout" data-confirm-assign>Confirm Assign</button>
     </div>
 </section>

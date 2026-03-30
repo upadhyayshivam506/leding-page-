@@ -9,36 +9,17 @@
     <div class="mapping-step"><span>3</span><strong>Preview</strong></div>
 </section>
 
-<section class="mapping-region-page" data-course-mapping-page data-region-rows="{{region_rows_attr_json}}" data-region-summary="{{region_summary_attr_json}}" data-columns="{{available_columns_attr_json}}" data-colleges="{{colleges_catalog_attr_json}}" data-duration-defaults="{{duration_defaults_attr_json}}" data-generate-preview-url="{{generate_preview_url}}" data-preview-page-url="{{preview_page_url}}" data-batch-id="{{uploaded_batch_id}}">
-    <section class="mapping-region-overview">
-        <article class="info-panel">
-            <p class="hero-label">Workflow</p>
-            <h3>Courses Mapping</h3>
-            <p>Open the modal to choose region data, select the mapping column, filter by specialization, and prepare a preview without reloading the page.</p>
-            <div class="mapping-summary-list">
-                <div><span>File</span><strong>{{uploaded_file_name}}</strong></div>
-                <div><span>Uploaded at</span><strong>{{uploaded_file_time}}</strong></div>
-                <div><span>Duration defaults</span><strong>50 leads / 0.2 sec</strong></div>
-            </div>
-            <div class="mapping-actions mapping-actions--card">
-                <button type="button" class="btn dashboard-logout" data-open-course-mapping>Courses Mapping</button>
-            </div>
-        </article>
-
-        <article class="info-panel">
-            <p class="hero-label">API Duration Configuration</p>
-            <h3>Delivery Settings Preview</h3>
-            <p>The live batch size and delay form appears on the preview page after you confirm the mapping.</p>
-            <div class="mapping-summary-list">
-                <div><span>Batch options</span><strong>50, 100, 200, Custom</strong></div>
-                <div><span>Delay options</span><strong>0.2s, 0.35s, 1s, Custom</strong></div>
-                <div><span>Background send</span><strong>Starts after save</strong></div>
-            </div>
-        </article>
-    </section>
+<section class="mapping-region-page" data-course-mapping-page data-api-colleagues-url="{{mapping_api_url}}" data-region-rows="{{region_rows_attr_json}}" data-region-summary="{{region_summary_attr_json}}" data-columns="{{available_columns_attr_json}}" data-colleges="{{colleges_catalog_attr_json}}" data-duration-defaults="{{duration_defaults_attr_json}}" data-generate-preview-url="{{generate_preview_url}}" data-preview-page-url="{{preview_page_url}}" data-batch-id="{{uploaded_batch_id}}">
+    <div class="mapping-actions mapping-actions--footer">
+        <button type="button" class="btn dashboard-logout" data-open-course-mapping>Courses Mapping</button>
+    </div>
 
     <div class="mapping-region-summary" data-region-summary-cards></div>
     <section class="region-groups" data-region-groups></section>
+
+    <div class="mapping-actions mapping-actions--footer">
+        <button type="button" class="btn dashboard-logout" data-confirm-region-redirect>Confirm Assign</button>
+    </div>
 </section>
 
 <div class="mapping-modal d-none" data-course-mapping-modal>
@@ -57,8 +38,8 @@
                 <div class="mapping-modal-step__head">
                     <span>1</span>
                     <div>
-                        <h4>Select Region Data</h4>
-                        <p>Choose one or more regions. Separate sections are created automatically below.</p>
+                        <h4>Select Region</h4>
+                        <p>Select one region or multiple regions from North, South, East, and West / Others.</p>
                     </div>
                 </div>
                 <div class="mapping-region-picker" data-region-picker></div>
@@ -70,7 +51,7 @@
                     <span>2</span>
                     <div>
                         <h4>Select Column for Mapping</h4>
-                        <p>Pick a leads table column, then choose the matching course values.</p>
+                        <p>Choose a column, default it to Course, then review all unique course values for the selected region data.</p>
                     </div>
                 </div>
                 <div class="mapping-form-grid">
@@ -91,7 +72,7 @@
                     <span>3</span>
                     <div>
                         <h4>Select Specialization</h4>
-                        <p>Specialization options are grouped from the selected region and course data.</p>
+                        <p>Read specialization values, group leads by specialization, and filter the mapping data using one specialization.</p>
                     </div>
                 </div>
                 <label class="form-label">
@@ -105,7 +86,7 @@
                     <span>4</span>
                     <div>
                         <h4>Select Colleges</h4>
-                        <p>Choose one or more colleges that should receive the mapped leads.</p>
+                        <p>Select one or more colleges that should receive the mapped leads after preview confirmation.</p>
                     </div>
                 </div>
                 <label class="form-label">

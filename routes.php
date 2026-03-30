@@ -19,6 +19,8 @@ return [
     'POST /leads/mapping/generate-preview.php' => [DashboardController::class, 'generateCourseMappingPreview'],
     'POST /leads/mapping/confirm-mapping.php' => [DashboardController::class, 'confirmCourseMapping'],
     'GET /leads/mapping/mapping-courses-specialization' => [DashboardController::class, 'mappingCoursesSpecialization'],
+    'POST /leads/mapping/confirm-assignments.php' => [DashboardController::class, 'confirmRegionAssignments'],
+    'GET /leads/mapping/api-duration' => [DashboardController::class, 'mappingApiDuration'],
     'POST /leads/mapping/save-duration-settings.php' => [DashboardController::class, 'saveDurationSettings'],
     'GET /leads/mapping/region/api-colleagues' => [DashboardController::class, 'mappingApiColleagues'],
     'GET /api-settings' => [DashboardController::class, 'apiSettings'],

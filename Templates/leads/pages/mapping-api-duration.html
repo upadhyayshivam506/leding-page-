@@ -1,0 +1,72 @@
+<section class="page-heading">
+    <p class="hero-label">{{page_kicker}}</p>
+    <h2>{{page_title}}</h2>
+</section>
+
+<section class="mapping-stepper" data-stepper data-current-step="{{mapping_step}}">
+    <div class="mapping-step"><span>1</span><strong>Upload</strong></div>
+    <div class="mapping-step"><span>2</span><strong>Region</strong></div>
+    <div class="mapping-step"><span>3</span><strong>Assign</strong></div>
+    <div class="mapping-step"><span>4</span><strong>API Duration</strong></div>
+</section>
+
+<section class="assignment-page" data-api-duration-page data-region-rows="{{region_rows_attr_json}}" data-duration-defaults="{{duration_defaults_attr_json}}" data-save-duration-url="{{save_duration_url}}" data-selected-colleges="{{selected_college_names_attr_json}}" data-region-assignments="{{region_assignments_attr_json}}">
+    <article class="info-panel">
+        <p class="hero-label">Page URL</p>
+        <h3>{{mapping_api_duration_url}}</h3>
+        <p>Configure batch size and delay, save the settings, and the system will continue sending leads in the background after redirect.</p>
+    </article>
+
+    <article class="info-panel">
+        <p class="hero-label">Sending Summary</p>
+        <h3>API Duration Configuration</h3>
+        <div class="mapping-summary-list">
+            <div><span>Total Leads</span><strong data-duration-total-leads>0</strong></div>
+            <div><span>Selected Colleagues</span><strong data-duration-selected-colleagues>0</strong></div>
+            <div><span>Selected Colleges</span><strong data-duration-selected-colleges>0</strong></div>
+            <div><span>Batch Size</span><strong data-duration-batch-size>50</strong></div>
+            <div><span>Delay</span><strong data-duration-delay>0.20 seconds</strong></div>
+            <div><span>Estimated Duration</span><strong data-duration-estimate>0 seconds</strong></div>
+        </div>
+        <div class="mapping-chip-list" data-selected-college-list></div>
+    </article>
+
+    <article class="info-panel">
+        <p class="hero-label">Duration Inputs</p>
+        <h3>Save Duration Settings</h3>
+        <div class="mapping-form-grid">
+            <label class="form-label">
+                Batch Size
+                <select class="assignment-select" data-batch-size>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                    <option value="custom">Custom</option>
+                </select>
+            </label>
+            <label class="form-label">
+                Delay
+                <select class="assignment-select" data-delay-size>
+                    <option value="0.2">0.2 seconds</option>
+                    <option value="0.35">0.35 seconds</option>
+                    <option value="1">1 second</option>
+                    <option value="custom">Custom</option>
+                </select>
+            </label>
+            <label class="form-label d-none" data-custom-batch-wrap>
+                Custom Batch Size
+                <input type="number" min="1" class="assignment-select" data-custom-batch-size>
+            </label>
+            <label class="form-label d-none" data-custom-delay-wrap>
+                Custom Delay in Seconds
+                <input type="number" min="0" step="0.01" class="assignment-select" data-custom-delay-size>
+            </label>
+        </div>
+
+        <p class="mapping-preview-message d-none" data-api-duration-message></p>
+
+        <div class="mapping-actions mapping-actions--footer">
+            <button type="button" class="btn dashboard-logout" data-save-duration>Save Duration Settings</button>
+        </div>
+    </article>
+</section>

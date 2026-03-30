@@ -16,7 +16,7 @@ final class LeadPushLog
     public function all(): array
     {
         $statement = Database::connection()->query(
-            'SELECT id, lead_id, region, college_name, status, response, created_at
+            'SELECT id, batch_id, lead_id, name, email, phone, course, specialization, campus, college_name, city, state, region, source_file, status, response, attempt_no, created_at
              FROM lead_api_logs
              ORDER BY created_at DESC, id DESC'
         );

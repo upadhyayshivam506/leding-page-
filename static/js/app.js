@@ -272,6 +272,7 @@ document.addEventListener('DOMContentLoaded', function () {
             body: logsRoot.querySelector('[data-table-body]'),
             countNode: logsRoot.querySelector('[data-table-count]'),
             paginationRoot: logsRoot.querySelector('[data-table-pagination]'),
+            rowsPerPage: 12,
             emptyMessage: 'No lead push logs are available yet.'
         });
     }
@@ -302,12 +303,13 @@ document.addEventListener('DOMContentLoaded', function () {
     if (regionRoot) {
         var rows = readJsonAttribute(regionRoot, 'data-region-rows');
         var summary = readJsonAttribute(regionRoot, 'data-region-summary');
+        var openCourseMappingButton = regionRoot.querySelector('[data-open-course-mapping]');
+        var confirmRegionRedirectButton = regionRoot.querySelector('[data-confirm-region-redirect]');
         var columns = readJsonAttribute(regionRoot, 'data-columns');
         var colleges = readJsonAttribute(regionRoot, 'data-colleges');
         var headers = rows.length ? Object.keys(rows[0]) : defaultPreviewHeaders;
         var grouped = groupRowsByRegion(rows);
         var modal = document.querySelector('[data-course-mapping-modal]');
-        var openModalButton = regionRoot.querySelector('[data-open-course-mapping]');
         var closeModalButtons = document.querySelectorAll('[data-close-course-mapping]');
         var regionPicker = modal ? modal.querySelector('[data-region-picker]') : null;
         var selectedRegionSections = modal ? modal.querySelector('[data-selected-region-sections]') : null;
@@ -358,7 +360,8 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             root.innerHTML = regionOrder.map(function (region) {
-                return '<article class="region-group-card"><div class="panel-head panel-head--table"><div><h3>' + escapeHtml(region) + '</h3><p class="table-subtext">Leads listed region-wise for quick review.</p></div><span class="panel-chip">' + escapeHtml(grouped[region].length) + ' leads</span></div>' + renderCompactTable(grouped[region], headers, 'No leads in this region.') + '</article>';
+                var previewRows = grouped[region].slice(0, 8);
+                return '<article class="region-group-card"><div class="panel-head panel-head--table"><div><h3>' + escapeHtml(region) + '</h3><p class="table-subtext">First 8 leads shown for quick review on all devices.</p></div><span class="panel-chip">' + escapeHtml(grouped[region].length) + ' leads</span></div>' + renderCompactTable(previewRows, headers, 'No leads in this region.') + '</article>';
             }).join('');
         }
 
@@ -392,7 +395,8 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             selectedRegionSections.innerHTML = selectedRegions.map(function (region) {
-                return '<article class="mapping-selected-region-card"><div class="panel-head panel-head--table"><div><h3>' + escapeHtml(region) + ' Section</h3><p class="table-subtext">Filtered lead data for the selected region.</p></div><span class="panel-chip">' + escapeHtml(grouped[region].length) + ' leads</span></div>' + renderCompactTable(grouped[region], headers, 'No leads in this region.') + '</article>';
+                var previewRows = grouped[region].slice(0, 8);
+                return '<article class="mapping-selected-region-card"><div class="panel-head panel-head--table"><div><h3>' + escapeHtml(region) + ' Section</h3><p class="table-subtext">First 8 filtered rows for the selected region.</p></div><span class="panel-chip">' + escapeHtml(grouped[region].length) + ' leads</span></div>' + renderCompactTable(previewRows, headers, 'No leads in this region.') + '</article>';
             }).join('');
         }
 
@@ -499,10 +503,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
         renderSummaryCards();
         renderRegionGroups();
-        renderRegionPicker();
-        renderColumnOptions();
-        updateDependentFields();
-        updateCollegeOptions();
+
+        if (modal) {
+            renderRegionPicker();
+            renderColumnOptions();
+            updateDependentFields();
+            updateCollegeOptions();
+        }
 
         if (courseSelect) {
             courseSelect.addEventListener('change', function () {
@@ -530,9 +537,15 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         }
 
-        if (openModalButton) {
-            openModalButton.addEventListener('click', function () {
+        if (openCourseMappingButton) {
+            openCourseMappingButton.addEventListener('click', function () {
                 setModalOpen(true);
+            });
+        }
+
+        if (confirmRegionRedirectButton) {
+            confirmRegionRedirectButton.addEventListener('click', function () {
+                window.location.href = regionRoot.getAttribute('data-api-colleagues-url') || '/leads/mapping/region/api-colleagues';
             });
         }
 
@@ -588,15 +601,7 @@ document.addEventListener('DOMContentLoaded', function () {
         var previewHeaders = readJsonScript(previewRoot, '[data-preview-headers]');
         var previewGrouped = readJsonAttribute(previewRoot, 'data-preview-grouped');
         var confirmButton = previewRoot.querySelector('[data-confirm-mapping]');
-        var saveButton = previewRoot.querySelector('[data-save-duration]');
         var durationMessage = previewRoot.querySelector('[data-duration-message]');
-        var batchSelect = previewRoot.querySelector('[data-batch-size]');
-        var delaySelect = previewRoot.querySelector('[data-delay-size]');
-        var customBatchWrap = previewRoot.querySelector('[data-custom-batch-wrap]');
-        var customDelayWrap = previewRoot.querySelector('[data-custom-delay-wrap]');
-        var customBatchInput = previewRoot.querySelector('[data-custom-batch-size]');
-        var customDelayInput = previewRoot.querySelector('[data-custom-delay-size]');
-        var isConfirmed = previewRoot.getAttribute('data-confirmed') === 'true';
 
         renderTable({
             headers: previewHeaders.length ? previewHeaders : defaultPreviewHeaders,
@@ -618,11 +623,6 @@ document.addEventListener('DOMContentLoaded', function () {
             }).join('');
         }
 
-        function syncCustomFields() {
-            toggleNode(customBatchWrap, batchSelect && batchSelect.value === 'custom');
-            toggleNode(customDelayWrap, delaySelect && delaySelect.value === 'custom');
-        }
-
         function setMessage(message, isError) {
             if (!durationMessage) {
                 return;
@@ -634,22 +634,8 @@ document.addEventListener('DOMContentLoaded', function () {
             durationMessage.classList.toggle('mapping-preview-message--success', !isError);
         }
 
-        if (batchSelect) {
-            batchSelect.addEventListener('change', syncCustomFields);
-        }
-        if (delaySelect) {
-            delaySelect.addEventListener('change', syncCustomFields);
-        }
-        syncCustomFields();
-
         if (confirmButton) {
-            confirmButton.disabled = isConfirmed;
-            confirmButton.textContent = isConfirmed ? 'Mapping Confirmed' : 'Confirm Mapping';
             confirmButton.addEventListener('click', function () {
-                if (isConfirmed) {
-                    return;
-                }
-
                 confirmButton.disabled = true;
                 fetchJson(previewRoot.getAttribute('data-confirm-url'), {
                     method: 'POST',
@@ -659,28 +645,251 @@ document.addEventListener('DOMContentLoaded', function () {
                     body: JSON.stringify({
                         mapping_configuration_id: previewRoot.getAttribute('data-mapping-configuration-id')
                     })
-                }).then(function () {
-                    isConfirmed = true;
-                    confirmButton.textContent = 'Mapping Confirmed';
-                    setMessage('Mapping confirmed. Save duration settings to start background sending.', false);
+                }).then(function (payload) {
+                    setMessage('Mapping confirmed. Redirecting to Assign Region Colleagues.', false);
+                    setTimeout(function () {
+                        window.location.href = payload.data && payload.data.redirect ? payload.data.redirect : '/leads/mapping/region/api-colleagues';
+                    }, 300);
                 }).catch(function (error) {
                     confirmButton.disabled = false;
                     setMessage(error.message || 'Unable to confirm mapping.', true);
                 });
             });
         }
+    }
 
-        if (saveButton) {
-            saveButton.addEventListener('click', function () {
-                if (!isConfirmed) {
-                    setMessage('Confirm mapping before saving duration settings.', true);
-                    return;
-                }
+    var regionColleaguesRoot = document.querySelector('[data-region-colleagues-page]');
+    if (regionColleaguesRoot) {
+        var regionSummary = readJsonAttribute(regionColleaguesRoot, 'data-region-summary');
+        var regionRows = readJsonAttribute(regionColleaguesRoot, 'data-region-rows');
+        var regionGrouped = groupRowsByRegion(regionRows);
+        var colleagueCatalog = readJsonAttribute(regionColleaguesRoot, 'data-colleague-catalog');
+        var existingAssignments = readJsonAttribute(regionColleaguesRoot, 'data-region-assignments');
+        var assignmentGrid = regionColleaguesRoot.querySelector('[data-assignment-grid]');
+        var summaryBody = regionColleaguesRoot.querySelector('[data-region-summary-body]');
+        var confirmAssignButton = regionColleaguesRoot.querySelector('[data-confirm-assign]');
+        var assignMessage = regionColleaguesRoot.querySelector('[data-assign-message]');
+        var assignments = {};
 
-                saveButton.disabled = true;
-                setMessage('Sending leads in background. Redirecting to leads page.', false);
+        regionOrder.forEach(function (region) {
+            assignments[region] = existingAssignments && existingAssignments[region] ? existingAssignments[region] : [];
+        });
 
-                fetchJson(previewRoot.getAttribute('data-save-duration-url'), {
+        function catalogForRegion(region) {
+            var catalog = colleagueCatalog && typeof colleagueCatalog === 'object' ? colleagueCatalog[region] : [];
+            if (Array.isArray(catalog)) {
+                return catalog;
+            }
+
+            return [];
+        }
+
+        function renderSummaryTable() {
+            if (!summaryBody) {
+                return;
+            }
+
+            summaryBody.innerHTML = regionOrder.map(function (region) {
+                var entry = regionSummary.find(function (item) {
+                    return item.region === region;
+                }) || { total: (regionGrouped[region] || []).length };
+
+                return '<tr><td>' + escapeHtml(region) + '</td><td>' + escapeHtml(entry.total) + '</td></tr>';
+            }).join('');
+        }
+
+        function renderRegionChips(region) {
+            var root = assignmentGrid.querySelector('[data-region-chip-list="' + region + '"]');
+            if (!root) {
+                return;
+            }
+
+            renderChipList(root, assignments[region].map(function (id) {
+                var match = catalogForRegion(region).find(function (college) {
+                    return college.id === id;
+                });
+                return match ? match.name : id;
+            }), 'No colleagues selected.');
+        }
+
+        function renderAssignments() {
+            if (!assignmentGrid) {
+                return;
+            }
+
+            assignmentGrid.innerHTML = regionOrder.map(function (region) {
+                var options = catalogForRegion(region);
+                var leadCount = (regionGrouped[region] || []).length;
+                var copy = leadCount > 0
+                    ? String(leadCount) + ' leads ready for assignment'
+                    : 'No leads ready for assignment';
+
+                return '<article class="info-panel assignment-card"><p class="hero-label">' + escapeHtml(region) + '</p><h3>' + escapeHtml(region) + ' Region</h3><p>' + escapeHtml(copy) + '</p><label class="form-label">Select Colleagues<select class="assignment-select" data-region-assignment="' + escapeHtml(region) + '" multiple>' + options.map(function (college) {
+                    var value = college.id || '';
+                    var label = college.name || value;
+                    var selected = assignments[region].indexOf(value) !== -1 ? ' selected' : '';
+                    return '<option value="' + escapeHtml(value) + '"' + selected + '>' + escapeHtml(label) + '</option>';
+                }).join('') + '</select></label><div class="mapping-chip-list" data-region-chip-list="' + escapeHtml(region) + '"></div></article>';
+            }).join('');
+
+            assignmentGrid.querySelectorAll('[data-region-assignment]').forEach(function (select) {
+                select.addEventListener('change', function () {
+                    var region = select.getAttribute('data-region-assignment') || '';
+                    assignments[region] = selectValues(select);
+                    renderRegionChips(region);
+                });
+            });
+        }
+
+        function setAssignMessage(message, isError) {
+            if (!assignMessage) {
+                return;
+            }
+
+            assignMessage.textContent = message;
+            assignMessage.classList.remove('d-none');
+            assignMessage.classList.toggle('mapping-preview-message--error', !!isError);
+            assignMessage.classList.toggle('mapping-preview-message--success', !isError);
+        }
+
+        renderSummaryTable();
+        renderAssignments();
+        regionOrder.forEach(renderRegionChips);
+
+        if (confirmAssignButton) {
+            confirmAssignButton.addEventListener('click', function () {
+                confirmAssignButton.disabled = true;
+                fetchJson(regionColleaguesRoot.getAttribute('data-confirm-assign-url'), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        assignments: assignments
+                    })
+                }).then(function (payload) {
+                    setAssignMessage('Assignments confirmed. Opening API Duration page.', false);
+                    setTimeout(function () {
+                        window.location.href = payload.data && payload.data.redirect
+                            ? payload.data.redirect
+                            : (regionColleaguesRoot.getAttribute('data-api-duration-page-url') || '/leads/mapping/api-duration');
+                    }, 300);
+                }).catch(function (error) {
+                    confirmAssignButton.disabled = false;
+                    setAssignMessage(error.message || 'Unable to confirm assignments.', true);
+                });
+            });
+        }
+    }
+
+    var apiDurationRoot = document.querySelector('[data-api-duration-page]');
+    if (apiDurationRoot) {
+        var apiRows = readJsonAttribute(apiDurationRoot, 'data-region-rows');
+        var durationDefaults = readJsonAttribute(apiDurationRoot, 'data-duration-defaults');
+        var selectedCollegeNames = readJsonAttribute(apiDurationRoot, 'data-selected-colleges');
+        var selectedAssignments = readJsonAttribute(apiDurationRoot, 'data-region-assignments');
+        var batchSelect = apiDurationRoot.querySelector('[data-batch-size]');
+        var delaySelect = apiDurationRoot.querySelector('[data-delay-size]');
+        var customBatchWrap = apiDurationRoot.querySelector('[data-custom-batch-wrap]');
+        var customDelayWrap = apiDurationRoot.querySelector('[data-custom-delay-wrap]');
+        var customBatchInput = apiDurationRoot.querySelector('[data-custom-batch-size]');
+        var customDelayInput = apiDurationRoot.querySelector('[data-custom-delay-size]');
+        var saveDurationButton = apiDurationRoot.querySelector('[data-save-duration]');
+        var apiDurationMessage = apiDurationRoot.querySelector('[data-api-duration-message]');
+        var totalLeadsNode = apiDurationRoot.querySelector('[data-duration-total-leads]');
+        var selectedColleaguesNode = apiDurationRoot.querySelector('[data-duration-selected-colleagues]');
+        var selectedCollegesNode = apiDurationRoot.querySelector('[data-duration-selected-colleges]');
+        var batchSizeNode = apiDurationRoot.querySelector('[data-duration-batch-size]');
+        var delayNode = apiDurationRoot.querySelector('[data-duration-delay]');
+        var estimateNode = apiDurationRoot.querySelector('[data-duration-estimate]');
+        var selectedCollegeList = apiDurationRoot.querySelector('[data-selected-college-list]');
+
+        function selectedAssignmentCount() {
+            var total = 0;
+
+            regionOrder.forEach(function (region) {
+                total += Array.isArray(selectedAssignments && selectedAssignments[region]) ? selectedAssignments[region].length : 0;
+            });
+
+            return total;
+        }
+
+        function setApiMessage(message, isError) {
+            if (!apiDurationMessage) {
+                return;
+            }
+
+            apiDurationMessage.textContent = message;
+            apiDurationMessage.classList.remove('d-none');
+            apiDurationMessage.classList.toggle('mapping-preview-message--error', !!isError);
+            apiDurationMessage.classList.toggle('mapping-preview-message--success', !isError);
+        }
+
+        function updateDurationSummary() {
+            var totalLeads = apiRows.length;
+            var batchSize = batchSelect && batchSelect.value === 'custom' ? Number(customBatchInput && customBatchInput.value ? customBatchInput.value : 0) : Number(batchSelect ? batchSelect.value : 50);
+            var delay = delaySelect && delaySelect.value === 'custom' ? Number(customDelayInput && customDelayInput.value ? customDelayInput.value : 0) : Number(delaySelect ? delaySelect.value : 0.2);
+            var batches = batchSize > 0 ? Math.ceil(totalLeads / batchSize) : 0;
+            var estimated = Math.max(0, batches - 1) * Math.max(0, delay);
+
+            if (totalLeadsNode) {
+                totalLeadsNode.textContent = String(totalLeads);
+            }
+            if (selectedColleaguesNode) {
+                selectedColleaguesNode.textContent = String(selectedAssignmentCount());
+            }
+            if (selectedCollegesNode) {
+                selectedCollegesNode.textContent = String(Array.isArray(selectedCollegeNames) ? selectedCollegeNames.length : 0);
+            }
+            if (batchSizeNode) {
+                batchSizeNode.textContent = batchSize > 0 ? String(batchSize) : '0';
+            }
+            if (delayNode) {
+                delayNode.textContent = delay.toFixed(2) + ' seconds';
+            }
+            if (estimateNode) {
+                estimateNode.textContent = estimated.toFixed(2) + ' seconds';
+            }
+        }
+
+        function syncCustomFields() {
+            toggleNode(customBatchWrap, batchSelect && batchSelect.value === 'custom');
+            toggleNode(customDelayWrap, delaySelect && delaySelect.value === 'custom');
+            updateDurationSummary();
+        }
+
+        if (durationDefaults && typeof durationDefaults === 'object') {
+            if (batchSelect && durationDefaults.batch_size) {
+                batchSelect.value = String(durationDefaults.batch_size);
+            }
+            if (delaySelect && durationDefaults.delay !== undefined) {
+                delaySelect.value = String(durationDefaults.delay);
+            }
+        }
+
+        renderChipList(selectedCollegeList, Array.isArray(selectedCollegeNames) ? selectedCollegeNames : [], 'No colleges selected yet.');
+        updateDurationSummary();
+        syncCustomFields();
+
+        if (batchSelect) {
+            batchSelect.addEventListener('change', syncCustomFields);
+        }
+        if (delaySelect) {
+            delaySelect.addEventListener('change', syncCustomFields);
+        }
+        if (customBatchInput) {
+            customBatchInput.addEventListener('input', updateDurationSummary);
+        }
+        if (customDelayInput) {
+            customDelayInput.addEventListener('input', updateDurationSummary);
+        }
+
+        if (saveDurationButton) {
+            saveDurationButton.addEventListener('click', function () {
+                saveDurationButton.disabled = true;
+                setApiMessage('Saving duration settings and preparing background sending...', false);
+
+                fetchJson(apiDurationRoot.getAttribute('data-save-duration-url'), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -692,13 +901,15 @@ document.addEventListener('DOMContentLoaded', function () {
                         custom_delay: customDelayInput ? customDelayInput.value : ''
                     })
                 }).then(function (payload) {
-                    var redirect = payload.data && payload.data.redirect ? payload.data.redirect : '/leads';
+                    var successMessage = payload.data && payload.data.confirmation ? payload.data.confirmation : 'Duration settings saved successfully.';
+                    var redirectMessage = payload.data && payload.data.message ? payload.data.message : 'Sending leads in background. Redirecting to leads page.';
+                    setApiMessage(successMessage + ' ' + redirectMessage, false);
                     setTimeout(function () {
-                        window.location.href = redirect;
+                        window.location.href = payload.data && payload.data.redirect ? payload.data.redirect : '/leads';
                     }, 400);
                 }).catch(function (error) {
-                    saveButton.disabled = false;
-                    setMessage(error.message || 'Unable to save duration settings.', true);
+                    saveDurationButton.disabled = false;
+                    setApiMessage(error.message || 'Unable to save duration settings.', true);
                 });
             });
         }
@@ -706,7 +917,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.querySelectorAll('[data-stepper]').forEach(function (stepper) {
         var currentStep = stepper.getAttribute('data-current-step');
-        var order = ['preview', 'region', 'assign'];
+        var order = ['preview', 'region', 'assign', 'api-duration'];
         var currentIndex = order.indexOf(currentStep);
         stepper.querySelectorAll('.mapping-step').forEach(function (step, index) {
             if (index < currentIndex) {

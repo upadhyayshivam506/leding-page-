@@ -18,6 +18,21 @@ final class LeadMappingService
         $connection = Database::connection();
 
         $connection->exec(
+            'CREATE TABLE IF NOT EXISTS colleagues (
+                id VARCHAR(100) NOT NULL,
+                college_name VARCHAR(190) NOT NULL,
+                region VARCHAR(50) NOT NULL,
+                api_url VARCHAR(255) DEFAULT NULL,
+                api_token VARCHAR(255) DEFAULT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (id),
+                KEY colleagues_region_index (region),
+                KEY colleagues_college_name_index (college_name)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+        );
+
+        $connection->exec(
             'CREATE TABLE IF NOT EXISTS lead_mapping_configurations (
                 id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
                 batch_id VARCHAR(100) NOT NULL,
@@ -67,15 +82,26 @@ final class LeadMappingService
                 id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
                 mapping_configuration_id BIGINT(20) UNSIGNED DEFAULT NULL,
                 job_token VARCHAR(120) DEFAULT NULL,
+                batch_id VARCHAR(100) DEFAULT NULL,
                 lead_id VARCHAR(100) NOT NULL,
+                name VARCHAR(190) DEFAULT NULL,
+                email VARCHAR(190) DEFAULT NULL,
+                phone VARCHAR(50) DEFAULT NULL,
+                course VARCHAR(190) DEFAULT NULL,
+                specialization VARCHAR(190) DEFAULT NULL,
+                campus VARCHAR(190) DEFAULT NULL,
                 college_name VARCHAR(190) NOT NULL,
+                city VARCHAR(120) DEFAULT NULL,
+                state VARCHAR(120) DEFAULT NULL,
                 region VARCHAR(50) DEFAULT NULL,
+                source_file VARCHAR(255) DEFAULT NULL,
                 status VARCHAR(50) NOT NULL,
                 response LONGTEXT DEFAULT NULL,
                 request_key VARCHAR(160) DEFAULT NULL,
                 attempt_no INT NOT NULL DEFAULT 1,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (id),
+                KEY lead_api_logs_batch_id_index (batch_id),
                 KEY lead_api_logs_lead_id_index (lead_id),
                 KEY lead_api_logs_college_name_index (college_name),
                 KEY lead_api_logs_status_index (status),
@@ -83,6 +109,8 @@ final class LeadMappingService
                 KEY lead_api_logs_job_token_index (job_token)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
         );
+
+        $this->seedDefaultColleagues($connection);
     }
 
     public function availableColumns(): array
@@ -95,12 +123,45 @@ final class LeadMappingService
         return self::REGION_ORDER;
     }
 
+    public function colleagueCatalogByRegion(): array
+    {
+        $this->ensureTables();
+
+        $catalog = array_fill_keys(self::REGION_ORDER, []);
+        $statement = Database::connection()->query(
+            'SELECT id, college_name, region, api_url, api_token
+             FROM colleagues
+             ORDER BY region ASC, college_name ASC'
+        );
+        $rows = $statement->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach (is_array($rows) ? $rows : [] as $row) {
+            $region = trim((string) ($row['region'] ?? ''));
+            if ($region === '') {
+                $region = 'West / Others';
+            }
+            if (!isset($catalog[$region])) {
+                $catalog[$region] = [];
+            }
+
+            $catalog[$region][] = [
+                'id' => (string) ($row['id'] ?? ''),
+                'name' => (string) ($row['college_name'] ?? $row['id'] ?? ''),
+                'region' => $region,
+                'api_endpoint' => (string) ($row['api_url'] ?? ''),
+                'api_token' => (string) ($row['api_token'] ?? ''),
+            ];
+        }
+
+        return $catalog;
+    }
+
     public function collegesCatalog(): array
     {
         $catalog = [];
 
-        foreach (colleague_catalog() as $region => $colleges) {
-            foreach ($colleges as $college) {
+        foreach ($this->colleagueCatalogByRegion() as $region => $colleges) {
+            foreach ((array) $colleges as $college) {
                 $catalog[] = [
                     'id' => (string) ($college['id'] ?? ''),
                     'name' => (string) ($college['name'] ?? $college['id'] ?? ''),
@@ -275,7 +336,7 @@ final class LeadMappingService
         ]);
     }
 
-    public function createOrReuseJob(int $mappingConfigurationId, string $batchId, int $batchSize, float $delay, int $totalLeads, array $collegeIds): array
+    public function createOrReuseJob(int $mappingConfigurationId, string $batchId, int $batchSize, float $delay, array $leads, array $assignmentsByRegion): array
     {
         $this->ensureTables();
 
@@ -285,7 +346,7 @@ final class LeadMappingService
         }
 
         $jobToken = 'map_job_' . bin2hex(random_bytes(10));
-        $totalRequests = $totalLeads * max(1, count($collegeIds));
+        $totalRequests = $this->calculateTotalRequests($leads, $assignmentsByRegion);
         $statement = Database::connection()->prepare(
             'INSERT INTO lead_mapping_jobs (
                 mapping_configuration_id, batch_id, job_token, batch_size, delay_seconds, status, total_leads, total_requests, colleges_json
@@ -300,9 +361,9 @@ final class LeadMappingService
             'batch_size' => $batchSize,
             'delay_seconds' => number_format($delay, 2, '.', ''),
             'status' => 'queued',
-            'total_leads' => $totalLeads,
+            'total_leads' => count($leads),
             'total_requests' => $totalRequests,
-            'colleges_json' => $this->encodeJson($collegeIds),
+            'colleges_json' => $this->encodeJsonValue($assignmentsByRegion),
         ]);
 
         $job = $this->findJobByToken($jobToken);
@@ -386,15 +447,15 @@ final class LeadMappingService
 
         $regions = $this->decodeJsonArray($mappingConfiguration['selected_regions'] ?? '[]');
         $courses = $this->decodeJsonArray($mappingConfiguration['selected_courses'] ?? '[]');
-        $collegeIds = $this->decodeJsonArray($mappingConfiguration['selected_colleges'] ?? '[]');
+        $assignmentsByRegion = $this->decodeJsonMap($job['colleges_json'] ?? '{}');
         $specialization = trim((string) ($mappingConfiguration['selected_specialization'] ?? ''));
         $rows = $this->fetchBatchRows((string) ($mappingConfiguration['batch_id'] ?? ''));
         $leads = $this->filterPreviewRows($rows, $regions, $courses, $specialization);
 
-        $this->processJob($jobToken, $leads, $collegeIds, (int) ($mappingConfiguration['id'] ?? 0));
+        $this->processJob($jobToken, $leads, $assignmentsByRegion, (int) ($mappingConfiguration['id'] ?? 0), (string) ($mappingConfiguration['batch_id'] ?? ''));
     }
 
-    public function processJob(string $jobToken, array $leads, array $collegeIds, int $mappingConfigurationId): void
+    public function processJob(string $jobToken, array $leads, array $assignmentsByRegion, int $mappingConfigurationId, string $batchId): void
     {
         $job = $this->findJobByToken($jobToken);
         if ($job === null) {
@@ -413,6 +474,9 @@ final class LeadMappingService
 
         foreach ($batches as $batchIndex => $batch) {
             foreach ($batch as $lead) {
+                $leadRegion = (string) ($lead['Region'] ?? 'West / Others');
+                $collegeIds = $this->normalizeCollegeIds((array) ($assignmentsByRegion[$leadRegion] ?? []));
+
                 foreach ($collegeIds as $collegeId) {
                     $requestKey = sha1($mappingConfigurationId . '|' . (string) ($lead['Lead ID'] ?? '') . '|' . $collegeId);
                     if ($this->hasSuccessfulLog($requestKey)) {
@@ -421,12 +485,12 @@ final class LeadMappingService
 
                     $college = $this->findCollegeById($collegeId);
                     if ($college === null) {
-                        $this->storeLeadLog($mappingConfigurationId, $jobToken, (string) ($lead['Lead ID'] ?? ''), $collegeId, (string) ($lead['Region'] ?? ''), 'failed', 'College configuration not found.', $requestKey, 1);
+                        $this->storeLeadLog($mappingConfigurationId, $jobToken, $batchId, $lead, $collegeId, 'failed', 'College configuration not found.', $requestKey, 1);
                         $this->incrementJobCounters($jobToken, false);
                         continue;
                     }
 
-                    $result = $this->retryLeadSend($lead, $college, $requestKey, $mappingConfigurationId, $jobToken);
+                    $result = $this->retryLeadSend($lead, $college, $requestKey, $mappingConfigurationId, $jobToken, $batchId);
                     $this->incrementJobCounters($jobToken, $result['success']);
                 }
             }
@@ -443,9 +507,9 @@ final class LeadMappingService
     public function storeLeadLog(
         int $mappingConfigurationId,
         string $jobToken,
-        string $leadId,
+        string $batchId,
+        array $lead,
         string $collegeName,
-        string $region,
         string $status,
         string $response,
         string $requestKey,
@@ -455,17 +519,27 @@ final class LeadMappingService
 
         $statement = Database::connection()->prepare(
             'INSERT INTO lead_api_logs (
-                mapping_configuration_id, job_token, lead_id, college_name, region, status, response, request_key, attempt_no, created_at
+                mapping_configuration_id, job_token, batch_id, lead_id, name, email, phone, course, specialization, campus, college_name, city, state, region, source_file, status, response, request_key, attempt_no, created_at
              ) VALUES (
-                :mapping_configuration_id, :job_token, :lead_id, :college_name, :region, :status, :response, :request_key, :attempt_no, NOW()
+                :mapping_configuration_id, :job_token, :batch_id, :lead_id, :name, :email, :phone, :course, :specialization, :campus, :college_name, :city, :state, :region, :source_file, :status, :response, :request_key, :attempt_no, NOW()
              )'
         );
         $statement->execute([
             'mapping_configuration_id' => $mappingConfigurationId > 0 ? $mappingConfigurationId : null,
             'job_token' => $jobToken !== '' ? $jobToken : null,
-            'lead_id' => $leadId,
+            'batch_id' => $batchId !== '' ? $batchId : null,
+            'lead_id' => (string) ($lead['Lead ID'] ?? ''),
+            'name' => $this->stringOrNull($lead['Name'] ?? null),
+            'email' => $this->stringOrNull($lead['Email'] ?? null),
+            'phone' => $this->stringOrNull($lead['Phone'] ?? null),
+            'course' => $this->stringOrNull($lead['Course'] ?? null),
+            'specialization' => $this->stringOrNull($lead['Specialization'] ?? null),
+            'campus' => $this->stringOrNull($lead['Campus'] ?? null),
             'college_name' => $collegeName,
-            'region' => trim($region) !== '' ? $region : null,
+            'city' => $this->stringOrNull($lead['City'] ?? null),
+            'state' => $this->stringOrNull($lead['State'] ?? null),
+            'region' => $this->stringOrNull($lead['Region'] ?? null),
+            'source_file' => $this->stringOrNull($lead['Source File'] ?? null),
             'status' => $status,
             'response' => $response,
             'request_key' => $requestKey !== '' ? $requestKey : null,
@@ -473,7 +547,7 @@ final class LeadMappingService
         ]);
     }
 
-    private function retryLeadSend(array $lead, array $college, string $requestKey, int $mappingConfigurationId, string $jobToken): array
+    private function retryLeadSend(array $lead, array $college, string $requestKey, int $mappingConfigurationId, string $jobToken, string $batchId): array
     {
         $attempt = 0;
         $lastResult = [
@@ -488,9 +562,9 @@ final class LeadMappingService
             $this->storeLeadLog(
                 $mappingConfigurationId,
                 $jobToken,
-                (string) ($lead['Lead ID'] ?? ''),
+                $batchId,
+                $lead,
                 (string) ($college['name'] ?? $college['id'] ?? ''),
-                (string) ($lead['Region'] ?? ''),
                 $lastResult['success'] ? 'success' : 'failed',
                 (string) ($lastResult['response'] ?? ''),
                 $requestKey,
@@ -847,8 +921,8 @@ final class LeadMappingService
 
     private function findCollegeById(string $collegeId): ?array
     {
-        foreach (colleague_catalog() as $region => $colleges) {
-            foreach ($colleges as $college) {
+        foreach ($this->colleagueCatalogByRegion() as $region => $colleges) {
+            foreach ((array) $colleges as $college) {
                 if ((string) ($college['id'] ?? '') === $collegeId) {
                     $college['region'] = $region;
 
@@ -858,6 +932,34 @@ final class LeadMappingService
         }
 
         return null;
+    }
+
+    private function seedDefaultColleagues(PDO $connection): void
+    {
+        $count = (int) $connection->query('SELECT COUNT(*) FROM colleagues')->fetchColumn();
+        if ($count > 0) {
+            return;
+        }
+
+        $statement = $connection->prepare(
+            'INSERT INTO colleagues (
+                id, college_name, region, api_url, api_token
+             ) VALUES (
+                :id, :college_name, :region, :api_url, :api_token
+             )'
+        );
+
+        foreach (colleague_catalog() as $region => $colleges) {
+            foreach ((array) $colleges as $college) {
+                $statement->execute([
+                    'id' => (string) ($college['id'] ?? ''),
+                    'college_name' => (string) ($college['name'] ?? $college['id'] ?? ''),
+                    'region' => (string) $region,
+                    'api_url' => (string) ($college['api_endpoint'] ?? ''),
+                    'api_token' => (string) ($college['api_token'] ?? ''),
+                ]);
+            }
+        }
     }
 
     private function findMappingConfiguration(int $mappingConfigurationId): ?array
@@ -884,7 +986,7 @@ final class LeadMappingService
     private function fetchBatchRows(string $batchId): array
     {
         $statement = Database::connection()->prepare(
-            'SELECT lead_id, name, email, phone, course, specialization, campus, college_name, city, state, region
+            'SELECT lead_id, name, email, phone, course, specialization, campus, college_name, city, state, region, source_file
              FROM leads
              WHERE batch_id = :batch_id
              ORDER BY id ASC'
@@ -908,6 +1010,7 @@ final class LeadMappingService
                 'City' => (string) ($row['city'] ?? ''),
                 'State' => (string) ($row['state'] ?? ''),
                 'Region' => (string) ($row['region'] ?? ''),
+                'Source File' => (string) ($row['source_file'] ?? ''),
             ];
         }, is_array($rows) ? $rows : []);
     }
@@ -927,8 +1030,47 @@ final class LeadMappingService
         return is_array($decoded) ? array_values($decoded) : [];
     }
 
+    private function decodeJsonMap(mixed $value): array
+    {
+        if (is_array($value)) {
+            return $value;
+        }
+
+        if (!is_string($value) || trim($value) === '') {
+            return [];
+        }
+
+        $decoded = json_decode($value, true);
+
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    private function calculateTotalRequests(array $leads, array $assignmentsByRegion): int
+    {
+        $total = 0;
+
+        foreach ($leads as $lead) {
+            $region = (string) ($lead['Region'] ?? 'West / Others');
+            $total += count($this->normalizeCollegeIds((array) ($assignmentsByRegion[$region] ?? [])));
+        }
+
+        return $total;
+    }
+
+    private function stringOrNull(mixed $value): ?string
+    {
+        $value = trim((string) ($value ?? ''));
+
+        return $value === '' ? null : $value;
+    }
+
     private function encodeJson(array $value): string
     {
         return (string) json_encode(array_values($value), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
+    private function encodeJsonValue(array $value): string
+    {
+        return (string) json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 }

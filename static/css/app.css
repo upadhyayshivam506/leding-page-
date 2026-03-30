@@ -1462,22 +1462,38 @@ a {
     gap: 24px;
 }
 
+.mapping-region-page > .mapping-actions--footer {
+    padding: 0 32px 4px;
+    justify-content: flex-start;
+}
+
+.mapping-region-page > .mapping-actions--footer .btn {
+    min-width: 220px;
+}
+
 .mapping-region-summary,
 .assignment-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 22px;
     padding: 0 32px;
+    align-items: stretch;
 }
 
 .mapping-region-card {
     padding: 22px 24px;
+    min-height: 180px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
 }
 
 .region-groups {
     display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
     gap: 22px;
     padding: 0 32px;
+    align-items: stretch;
 }
 
 .region-group-card {
@@ -1486,6 +1502,16 @@ a {
     border-radius: 24px;
     box-shadow: 0 22px 46px rgba(7, 7, 14, 0.22);
     padding: 24px 26px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.region-group-card .table-responsive {
+    margin-top: 12px;
+    max-height: 360px;
+    overflow: auto;
+    border-radius: 18px;
 }
 
 .region-lead-list {
@@ -1604,6 +1630,11 @@ a {
     .assignment-success {
         padding-left: 22px;
         padding-right: 22px;
+    }
+
+    .mapping-region-page > .mapping-actions--footer .btn {
+        width: 100%;
+        min-width: 0;
     }
 }
 
@@ -1857,5 +1888,33 @@ body.modal-is-open {
     .mapping-modal__footer {
         padding-left: 18px;
         padding-right: 18px;
+    }
+}
+
+@media (max-width: 575.98px) {
+    .mapping-stepper,
+    .mapping-region-summary,
+    .region-groups,
+    .mapping-region-page > .mapping-actions--footer {
+        padding-left: 18px;
+        padding-right: 18px;
+    }
+
+    .mapping-step {
+        padding: 12px 14px;
+    }
+
+    .mapping-region-card,
+    .region-group-card {
+        padding: 18px;
+        border-radius: 20px;
+    }
+
+    .mapping-region-card {
+        min-height: 0;
+    }
+
+    .region-groups {
+        grid-template-columns: 1fr;
     }
 }
