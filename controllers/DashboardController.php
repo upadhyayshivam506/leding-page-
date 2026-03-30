@@ -9,13 +9,15 @@ use Models\LeadPushLog;
 use PDOException;
 use RuntimeException;
 use Services\AuthService;
+use Services\LeadMappingService;
 
 final class DashboardController
 {
     public function __construct(
         private readonly AuthService $auth = new AuthService(),
         private readonly Lead $leads = new Lead(),
-        private readonly LeadPushLog $leadPushLogs = new LeadPushLog()
+        private readonly LeadPushLog $leadPushLogs = new LeadPushLog(),
+        private readonly LeadMappingService $leadMapping = new LeadMappingService()
     )
     {
     }
@@ -169,17 +171,24 @@ final class DashboardController
         $batchId = (string) ($upload['batch_id'] ?? '');
         $rows = $this->leadDataForBatch($batchId)['rows'];
         $summary = $this->leads->summarizeByBatch($batchId);
+        $durationDefaults = $this->durationDefaults();
 
         $this->renderAdminPage($user, 'leads', 'leads/pages/mapping-region', [
             'title' => e('Region Mapping'),
             'page_kicker' => e('Step 2 of 3'),
             'page_title' => e('Region Grouping'),
-            'page_description' => e('Review region-wise grouping for the uploaded leads before assigning colleagues.'),
+            'page_description' => e('Review region grouping, open the course mapping workflow, and prepare preview data without leaving this page.'),
             'flash_alert' => '',
             'page_action' => '<a href="' . e(app_url('leads/mapping')) . '" class="panel-link topbar-action-link">Back</a>',
             'uploaded_file_name' => e((string) ($upload['original_name'] ?? '')),
+            'uploaded_file_time' => e((string) ($upload['uploaded_at'] ?? '')),
             'region_rows_attr_json' => $this->jsonAttribute($rows),
             'region_summary_attr_json' => $this->jsonAttribute($summary),
+            'available_columns_attr_json' => $this->jsonAttribute($this->leadMapping->availableColumns()),
+            'colleges_catalog_attr_json' => $this->jsonAttribute($this->leadMapping->collegesCatalog()),
+            'generate_preview_url' => e(app_url('leads/mapping/generate-preview.php')),
+            'preview_page_url' => e(app_url('leads/mapping/mapping-courses-specialization')),
+            'duration_defaults_attr_json' => $this->jsonAttribute($durationDefaults),
             'uploaded_batch_id' => e($batchId),
             'mapping_step' => 'region',
             'mapping_region_url' => e(app_url('leads/mapping/region')),
@@ -189,28 +198,200 @@ final class DashboardController
 
     public function mappingApiColleagues(): void
     {
+        redirect('/leads/mapping/mapping-courses-specialization');
+    }
+
+    public function generateCourseMappingPreview(): void
+    {
+        $this->guard();
+        $upload = $this->uploadedFileOrRedirect();
+
+        ob_start();
+        header('Content-Type: application/json');
+        ob_clean();
+
+        try {
+            $payload = $this->requestJsonPayload();
+            $regions = $this->leadMapping->normalizeRegions((array) ($payload['regions'] ?? []));
+            $column = trim((string) ($payload['column'] ?? 'Course'));
+            $courses = $this->leadMapping->normalizeCourseValues((array) ($payload['course_values'] ?? []));
+            $specialization = trim((string) ($payload['specialization'] ?? ''));
+            $colleges = $this->leadMapping->normalizeCollegeIds((array) ($payload['college_ids'] ?? []));
+            $rows = $this->leadDataForBatch((string) ($upload['batch_id'] ?? ''))['rows'];
+
+            if ($colleges === []) {
+                throw new RuntimeException('Select at least one college before generating preview.');
+            }
+
+            if ($specialization === '') {
+                throw new RuntimeException('Select one specialization before generating preview.');
+            }
+
+            $leads = $this->leadMapping->filterPreviewRows($rows, $regions, $courses, $specialization);
+            if ($leads === []) {
+                throw new RuntimeException('No leads matched the selected region, course, and specialization filters.');
+            }
+
+            $mappingConfigurationId = $this->leadMapping->createMappingConfiguration(
+                (string) ($upload['batch_id'] ?? ''),
+                $regions,
+                $column,
+                $courses,
+                $specialization,
+                $colleges,
+                count($leads)
+            );
+
+            $_SESSION['mapping_preview'] = [
+                'mapping_configuration_id' => $mappingConfigurationId,
+                'batch_id' => (string) ($upload['batch_id'] ?? ''),
+                'regions' => $regions,
+                'column' => $column,
+                'course_values' => $courses,
+                'specialization' => $specialization,
+                'college_ids' => $colleges,
+                'colleges' => $this->selectedCollegeNames($colleges),
+                'data' => $leads,
+                'total' => count($leads),
+                'grouped' => $this->leadMapping->groupRowsByRegion($leads),
+                'confirmed' => false,
+            ];
+            $_SESSION['mapped_leads'] = $leads;
+            $_SESSION['selected_colleges'] = $this->selectedCollegeNames($colleges);
+
+            echo json_encode([
+                'status' => 'success',
+                'data' => $leads,
+                'total' => count($leads),
+            ]);
+        } catch (\Throwable $e) {
+            http_response_code(422);
+            echo json_encode([
+                'status' => 'error',
+                'message' => $e->getMessage() !== '' ? $e->getMessage() : 'Unable to generate preview.',
+            ]);
+        }
+
+        exit;
+    }
+
+    public function mappingCoursesSpecialization(): void
+    {
         $user = $this->guard();
         $upload = $this->uploadedFileOrRedirect();
-        $batchId = (string) ($upload['batch_id'] ?? '');
-        $summary = $this->requestedRegionSummary() ?: $this->leads->summarizeByBatch($batchId);
+        $preview = $this->mappingPreviewOrRedirect();
+        $durationDefaults = $this->durationDefaults();
 
-        $this->renderAdminPage($user, 'leads', 'leads/pages/mapping-api-colleagues', [
-            'title' => e('Assign Colleagues'),
+        $this->renderAdminPage($user, 'leads', 'leads/pages/mapping-courses-specialization', [
+            'title' => e('Mapping Courses Specialization'),
             'page_kicker' => e('Step 3 of 3'),
-            'page_title' => e('Region API Coverage'),
-            'page_description' => e('Review region-wise college coverage. On submit, each region sends its leads to all colleges configured for that region.'),
+            'page_title' => e('Mapping Courses Specialization'),
+            'page_description' => e('Review the generated preview, confirm the mapping, set API duration settings, and start background delivery.'),
             'flash_alert' => '',
             'page_action' => '<a href="' . e(app_url('leads/mapping/region')) . '" class="panel-link topbar-action-link">Back</a>',
             'uploaded_file_name' => e((string) ($upload['original_name'] ?? '')),
-            'uploaded_batch_id' => e($batchId),
-            'region_summary_attr_json' => $this->jsonAttribute($summary),
-            'colleague_catalog_attr_json' => $this->jsonAttribute(\colleague_catalog()),
-            'fetch_colleagues_url' => e(app_url('api/fetch-colleagues.php')),
-            'assign_colleagues_url' => e(app_url('api/push-leads.php')),
+            'uploaded_batch_id' => e((string) ($preview['batch_id'] ?? '')),
+            'preview_rows_json' => $this->json($preview['data'] ?? []),
+            'preview_grouped_attr_json' => $this->jsonAttribute($preview['grouped'] ?? []),
+            'preview_total_records' => e((string) ($preview['total'] ?? 0)),
+            'preview_selected_regions' => e(implode(', ', (array) ($preview['regions'] ?? []))),
+            'preview_selected_courses' => e(implode(', ', (array) ($preview['course_values'] ?? []))),
+            'preview_selected_specialization' => e((string) ($preview['specialization'] ?? '')),
+            'preview_selected_colleges' => e(implode(', ', (array) ($preview['colleges'] ?? []))),
+            'confirm_mapping_url' => e(app_url('leads/mapping/confirm-mapping.php')),
+            'save_duration_url' => e(app_url('leads/mapping/save-duration-settings.php')),
+            'duration_defaults_attr_json' => $this->jsonAttribute($durationDefaults),
+            'mapping_configuration_id' => e((string) ($preview['mapping_configuration_id'] ?? 0)),
+            'mapping_confirmed_state' => !empty($preview['confirmed']) ? 'true' : 'false',
             'mapping_step' => 'assign',
-            'mapping_region_url' => e(app_url('leads/mapping/region')),
-            'mapping_api_url' => e(app_url('leads/mapping/region/api-colleagues')),
         ]);
+    }
+
+    public function confirmCourseMapping(): void
+    {
+        $this->guard();
+
+        ob_start();
+        header('Content-Type: application/json');
+        ob_clean();
+
+        try {
+            $preview = $this->mappingPreviewOrRedirect(false);
+            $mappingConfigurationId = (int) ($preview['mapping_configuration_id'] ?? 0);
+            if ($mappingConfigurationId <= 0) {
+                throw new RuntimeException('Mapping preview session is missing.');
+            }
+
+            $this->leadMapping->markConfigurationConfirmed($mappingConfigurationId);
+            $_SESSION['mapping_preview']['confirmed'] = true;
+
+            echo json_encode([
+                'status' => 'success',
+                'data' => [],
+                'total' => (int) ($preview['total'] ?? 0),
+            ]);
+        } catch (\Throwable $e) {
+            http_response_code(422);
+            echo json_encode([
+                'status' => 'error',
+                'message' => $e->getMessage() !== '' ? $e->getMessage() : 'Unable to confirm mapping.',
+            ]);
+        }
+
+        exit;
+    }
+
+    public function saveDurationSettings(): void
+    {
+        $this->guard();
+
+        ob_start();
+        header('Content-Type: application/json');
+        ob_clean();
+
+        try {
+            $payload = $this->requestJsonPayload();
+            $preview = $this->mappingPreviewOrRedirect(false);
+            $mappingConfigurationId = (int) ($preview['mapping_configuration_id'] ?? 0);
+            $batchSize = $this->normalizeBatchSize($payload['batch_size'] ?? 50, $payload['custom_batch_size'] ?? null);
+            $delay = $this->normalizeDelay($payload['delay'] ?? '0.2', $payload['custom_delay'] ?? null);
+
+            if (empty($preview['confirmed'])) {
+                throw new RuntimeException('Confirm mapping before saving duration settings.');
+            }
+
+            $_SESSION['batch_size'] = $batchSize;
+            $_SESSION['delay'] = $delay;
+
+            $job = $this->leadMapping->createOrReuseJob(
+                $mappingConfigurationId,
+                (string) ($preview['batch_id'] ?? ''),
+                $batchSize,
+                $delay,
+                (int) ($preview['total'] ?? 0),
+                (array) ($preview['college_ids'] ?? [])
+            );
+
+            $this->leadMapping->spawnBackgroundJob((string) ($job['job_token'] ?? ''));
+
+            echo json_encode([
+                'status' => 'success',
+                'data' => [
+                    'message' => 'Sending leads in background. Redirecting to leads page.',
+                    'redirect' => app_url('leads'),
+                    'job_token' => (string) ($job['job_token'] ?? ''),
+                ],
+                'total' => (int) ($preview['total'] ?? 0),
+            ]);
+        } catch (\Throwable $e) {
+            http_response_code(422);
+            echo json_encode([
+                'status' => 'error',
+                'message' => $e->getMessage() !== '' ? $e->getMessage() : 'Unable to save duration settings.',
+            ]);
+        }
+
+        exit;
     }
 
     public function apiSettings(): void
@@ -573,6 +754,87 @@ final class DashboardController
         return is_array($decoded) ? $decoded : [];
     }
 
+    private function mappingPreviewOrRedirect(bool $redirectOnMissing = true): array
+    {
+        $preview = $_SESSION['mapping_preview'] ?? null;
+
+        if (is_array($preview) && isset($preview['data']) && is_array($preview['data'])) {
+            return $preview;
+        }
+
+        if ($redirectOnMissing) {
+            flash('Generate a preview first to continue the mapping workflow.');
+            redirect('/leads/mapping/region');
+        }
+
+        throw new RuntimeException('Generate preview first.');
+    }
+
+    private function requestJsonPayload(): array
+    {
+        $rawBody = file_get_contents('php://input');
+        $decoded = json_decode(is_string($rawBody) ? $rawBody : '', true);
+
+        if (!is_array($decoded)) {
+            throw new RuntimeException('Invalid JSON payload.');
+        }
+
+        return $decoded;
+    }
+
+    private function selectedCollegeNames(array $collegeIds): array
+    {
+        $names = [];
+
+        foreach ($this->leadMapping->collegesCatalog() as $college) {
+            if (in_array((string) ($college['id'] ?? ''), $collegeIds, true)) {
+                $names[] = (string) ($college['name'] ?? $college['id'] ?? '');
+            }
+        }
+
+        return array_values(array_unique($names));
+    }
+
+    private function durationDefaults(): array
+    {
+        return [
+            'batch_size' => 50,
+            'delay' => 0.2,
+            'batch_options' => [50, 100, 200, 'custom'],
+            'delay_options' => ['0.2', '0.35', '1', 'custom'],
+        ];
+    }
+
+    private function normalizeBatchSize(mixed $batchSize, mixed $customBatchSize): int
+    {
+        $value = is_string($batchSize) ? trim($batchSize) : (string) $batchSize;
+        if ($value === 'custom') {
+            $value = is_string($customBatchSize) ? trim($customBatchSize) : (string) $customBatchSize;
+        }
+
+        $normalized = (int) $value;
+        if ($normalized <= 0) {
+            throw new RuntimeException('Batch size must be greater than zero.');
+        }
+
+        return $normalized;
+    }
+
+    private function normalizeDelay(mixed $delay, mixed $customDelay): float
+    {
+        $value = is_string($delay) ? trim($delay) : (string) $delay;
+        if ($value === 'custom') {
+            $value = is_string($customDelay) ? trim($customDelay) : (string) $customDelay;
+        }
+
+        $normalized = (float) $value;
+        if ($normalized < 0) {
+            throw new RuntimeException('Delay must be zero or greater.');
+        }
+
+        return $normalized;
+    }
+
     private function json(array $value): string
     {
         return (string) json_encode($value, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
@@ -605,7 +867,7 @@ final class DashboardController
         } catch (PDOException) {
             return [
                 'rows' => [],
-                'headers' => ['Lead ID', 'Region', 'College ID', 'Status', 'Response', 'Created At'],
+                'headers' => ['Lead ID', 'Region', 'College Name', 'Status', 'Response', 'Created At'],
             ];
         }
 
@@ -619,13 +881,13 @@ final class DashboardController
                 return [
                     'Lead ID' => (string) ($row['lead_id'] ?? ''),
                     'Region' => (string) ($row['region'] ?? ''),
-                    'College ID' => (string) ($row['college_id'] ?? ''),
-                    'Status' => (string) ($row['api_status'] ?? ''),
+                    'College Name' => (string) ($row['college_name'] ?? ''),
+                    'Status' => (string) ($row['status'] ?? ''),
                     'Response' => $response,
                     'Created At' => (string) ($row['created_at'] ?? ''),
                 ];
             }, $rows),
-            'headers' => ['Lead ID', 'Region', 'College ID', 'Status', 'Response', 'Created At'],
+            'headers' => ['Lead ID', 'Region', 'College Name', 'Status', 'Response', 'Created At'],
         ];
     }
 
@@ -690,6 +952,22 @@ final class DashboardController
             'region_rows_attr_json' => '[]',
             'region_summary_attr_json' => '[]',
             'colleague_catalog_attr_json' => '[]',
+            'colleges_catalog_attr_json' => '[]',
+            'available_columns_attr_json' => '[]',
+            'duration_defaults_attr_json' => '[]',
+            'generate_preview_url' => e(app_url('leads/mapping/generate-preview.php')),
+            'preview_page_url' => e(app_url('leads/mapping/mapping-courses-specialization')),
+            'preview_rows_json' => '[]',
+            'preview_grouped_attr_json' => '[]',
+            'preview_total_records' => '0',
+            'preview_selected_regions' => '',
+            'preview_selected_courses' => '',
+            'preview_selected_specialization' => '',
+            'preview_selected_colleges' => '',
+            'confirm_mapping_url' => e(app_url('leads/mapping/confirm-mapping.php')),
+            'save_duration_url' => e(app_url('leads/mapping/save-duration-settings.php')),
+            'mapping_configuration_id' => '0',
+            'mapping_confirmed_state' => 'false',
             'mapping_region_url' => e(app_url('leads/mapping/region')),
             'mapping_api_url' => e(app_url('leads/mapping/region/api-colleagues')),
             'fetch_colleagues_url' => e(app_url('api/fetch-colleagues.php')),
@@ -699,6 +977,3 @@ final class DashboardController
         return array_merge($base, $overrides);
     }
 }
-
-
-

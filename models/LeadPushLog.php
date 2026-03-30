@@ -8,11 +8,16 @@ use Config\Database;
 
 final class LeadPushLog
 {
+    public function __construct()
+    {
+        (new \Services\LeadMappingService())->ensureTables();
+    }
+
     public function all(): array
     {
         $statement = Database::connection()->query(
-            'SELECT id, lead_id, region, college_id, api_status, response, created_at
-             FROM lead_push_logs
+            'SELECT id, lead_id, region, college_name, status, response, created_at
+             FROM lead_api_logs
              ORDER BY created_at DESC, id DESC'
         );
 
@@ -23,7 +28,7 @@ final class LeadPushLog
 
     public function countAll(): int
     {
-        $statement = Database::connection()->query('SELECT COUNT(*) FROM lead_push_logs');
+        $statement = Database::connection()->query('SELECT COUNT(*) FROM lead_api_logs');
 
         return (int) $statement->fetchColumn();
     }
@@ -31,7 +36,7 @@ final class LeadPushLog
     public function countByStatus(string $status): int
     {
         $statement = Database::connection()->prepare(
-            'SELECT COUNT(*) FROM lead_push_logs WHERE api_status = :status'
+            'SELECT COUNT(*) FROM lead_api_logs WHERE status = :status'
         );
         $statement->execute([
             'status' => trim($status),
@@ -42,7 +47,7 @@ final class LeadPushLog
 
     public function countDistinctColleges(): int
     {
-        $statement = Database::connection()->query('SELECT COUNT(DISTINCT college_id) FROM lead_push_logs');
+        $statement = Database::connection()->query('SELECT COUNT(DISTINCT college_name) FROM lead_api_logs');
 
         return (int) $statement->fetchColumn();
     }

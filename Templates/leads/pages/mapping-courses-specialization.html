@@ -1,0 +1,88 @@
+<section class="page-heading">
+    <p class="hero-label">{{page_kicker}}</p>
+    <h2>{{page_title}}</h2>
+</section>
+
+<section class="mapping-stepper" data-stepper data-current-step="{{mapping_step}}">
+    <div class="mapping-step"><span>1</span><strong>Upload</strong></div>
+    <div class="mapping-step"><span>2</span><strong>Region</strong></div>
+    <div class="mapping-step"><span>3</span><strong>Preview</strong></div>
+</section>
+
+<section class="mapping-preview-page" data-mapping-courses-preview data-preview-grouped="{{preview_grouped_attr_json}}" data-confirm-url="{{confirm_mapping_url}}" data-save-duration-url="{{save_duration_url}}" data-duration-defaults="{{duration_defaults_attr_json}}" data-confirmed="{{mapping_confirmed_state}}" data-mapping-configuration-id="{{mapping_configuration_id}}">
+    <section class="mapping-preview-summary">
+        <article class="info-panel">
+            <p class="hero-label">Preview Filters</p>
+            <h3>Mapped Lead Snapshot</h3>
+            <div class="mapping-summary-list">
+                <div><span>Regions</span><strong>{{preview_selected_regions}}</strong></div>
+                <div><span>Courses</span><strong>{{preview_selected_courses}}</strong></div>
+                <div><span>Specialization</span><strong>{{preview_selected_specialization}}</strong></div>
+                <div><span>Colleges</span><strong>{{preview_selected_colleges}}</strong></div>
+                <div><span>Total leads</span><strong>{{preview_total_records}}</strong></div>
+            </div>
+            <div class="mapping-actions mapping-actions--card">
+                <button type="button" class="btn dashboard-logout" data-confirm-mapping>Confirm Mapping</button>
+            </div>
+        </article>
+
+        <article class="info-panel" data-duration-panel>
+            <p class="hero-label">API Duration Configuration</p>
+            <h3>Send Leads in Background</h3>
+            <p>Select the batch size and delay. Saving starts background sending immediately and redirects to `/leads`.</p>
+            <div class="mapping-form-grid">
+                <label class="form-label">
+                    Batch Size
+                    <select class="assignment-select" data-batch-size>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                        <option value="200">200</option>
+                        <option value="custom">Custom</option>
+                    </select>
+                </label>
+                <label class="form-label">
+                    Delay Between Requests
+                    <select class="assignment-select" data-delay-size>
+                        <option value="0.2">0.2 seconds</option>
+                        <option value="0.35">0.35 seconds</option>
+                        <option value="1">1 second</option>
+                        <option value="custom">Custom</option>
+                    </select>
+                </label>
+                <label class="form-label d-none" data-custom-batch-wrap>
+                    Custom Batch Size
+                    <input type="number" min="1" class="assignment-select" data-custom-batch-size>
+                </label>
+                <label class="form-label d-none" data-custom-delay-wrap>
+                    Custom Delay in Seconds
+                    <input type="number" min="0" step="0.01" class="assignment-select" data-custom-delay-size>
+                </label>
+            </div>
+            <p class="mapping-preview-message d-none" data-duration-message></p>
+            <div class="mapping-actions mapping-actions--card">
+                <button type="button" class="btn dashboard-logout" data-save-duration>Save Duration Settings</button>
+            </div>
+        </article>
+    </section>
+
+    <section class="region-groups region-groups--preview" data-preview-region-groups></section>
+
+    <article class="table-panel">
+        <div class="panel-head panel-head--table">
+            <div>
+                <h3>Preview Table</h3>
+                <p class="table-subtext">First 10 rows are shown per page, grouped data remains available above.</p>
+            </div>
+            <span class="panel-chip" data-preview-count>{{preview_total_records}} leads</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table admin-table align-middle mb-0">
+                <thead data-preview-head></thead>
+                <tbody data-preview-body></tbody>
+            </table>
+        </div>
+        <div class="table-pagination" data-preview-pagination></div>
+        <script type="application/json" data-preview-rows>{{preview_rows_json}}</script>
+        <script type="application/json" data-preview-headers>["Lead ID","Name","Email","Phone","Course","Specialization","Campus","College Name","City","State","Region"]</script>
+    </article>
+</section>

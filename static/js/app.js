@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', function () {
-    var rowsPerPage = 20;
     var regionOrder = ['North', 'South', 'East', 'West / Others'];
+    var defaultPreviewHeaders = ['Lead ID', 'Name', 'Email', 'Phone', 'Course', 'Specialization', 'Campus', 'College Name', 'City', 'State', 'Region'];
 
     function readJsonScript(root, selector) {
         var node = root.querySelector(selector);
@@ -36,115 +36,10 @@ document.addEventListener('DOMContentLoaded', function () {
             .replace(/'/g, '&#39;');
     }
 
-    function buildPager(paginationRoot, currentPage, totalPages, onPageChange) {
-        if (!paginationRoot) {
-            return;
-        }
-
-        if (totalPages <= 1) {
-            paginationRoot.innerHTML = '';
-            return;
-        }
-
-        var buttons = [];
-        buttons.push('<button type="button" class="table-page-btn" data-page="' + (currentPage - 1) + '"' + (currentPage === 1 ? ' disabled' : '') + '>Prev</button>');
-
-        for (var page = 1; page <= totalPages; page += 1) {
-            buttons.push('<button type="button" class="table-page-btn' + (page === currentPage ? ' is-active' : '') + '" data-page="' + page + '">' + page + '</button>');
-        }
-
-        buttons.push('<button type="button" class="table-page-btn" data-page="' + (currentPage + 1) + '"' + (currentPage === totalPages ? ' disabled' : '') + '>Next</button>');
-        paginationRoot.innerHTML = buttons.join('');
-
-        paginationRoot.querySelectorAll('[data-page]').forEach(function (button) {
-            button.addEventListener('click', function () {
-                var nextPage = Number(button.getAttribute('data-page'));
-                if (nextPage >= 1 && nextPage <= totalPages) {
-                    onPageChange(nextPage);
-                }
-            });
-        });
-    }
-
-    function renderTable(config) {
-        var headers = Array.isArray(config.headers) ? config.headers : [];
-        var rows = Array.isArray(config.rows) ? config.rows : [];
-        var head = config.head;
-        var body = config.body;
-        var countNode = config.countNode;
-        var paginationRoot = config.paginationRoot;
-        var emptyMessage = config.emptyMessage || 'No data available.';
-        var currentPage = 1;
-        var totalPages = Math.max(1, Math.ceil(rows.length / rowsPerPage));
-
-        function update(page) {
-            currentPage = page;
-
-            if (head) {
-                head.innerHTML = headers.length > 0
-                    ? '<tr>' + headers.map(function (header) {
-                        return '<th>' + escapeHtml(header) + '</th>';
-                    }).join('') + '</tr>'
-                    : '';
-            }
-
-            if (!body) {
-                return;
-            }
-
-            if (rows.length === 0 || headers.length === 0) {
-                body.innerHTML = '<tr><td colspan="' + Math.max(headers.length, 1) + '" class="table-empty-state">' + escapeHtml(emptyMessage) + '</td></tr>';
-                if (countNode) {
-                    countNode.textContent = '0 rows';
-                }
-                if (paginationRoot) {
-                    paginationRoot.innerHTML = '';
-                }
-                return;
-            }
-
-            var start = (currentPage - 1) * rowsPerPage;
-            var pagedRows = rows.slice(start, start + rowsPerPage);
-            body.innerHTML = pagedRows.map(function (row) {
-                return '<tr>' + headers.map(function (header) {
-                    return '<td>' + escapeHtml(row && row[header] != null ? row[header] : '') + '</td>';
-                }).join('') + '</tr>';
-            }).join('');
-
-            if (countNode) {
-                var end = Math.min(start + rowsPerPage, rows.length);
-                countNode.textContent = rows.length === 0 ? '0 rows' : 'Showing ' + (start + 1) + '-' + end + ' of ' + rows.length + ' rows';
-            }
-
-            buildPager(paginationRoot, currentPage, totalPages, update);
-        }
-
-        update(1);
-    }
-
-    function renderCompactTable(rows, headers) {
-        if (!rows.length) {
-            return '<div class="table-responsive"><table class="table admin-table align-middle mb-0"><tbody><tr><td class="table-empty-state">No leads in this region.</td></tr></tbody></table></div>';
-        }
-
-        return '<div class="table-responsive"><table class="table admin-table align-middle mb-0"><thead><tr>' + headers.map(function (header) {
-            return '<th>' + escapeHtml(header) + '</th>';
-        }).join('') + '</tr></thead><tbody>' + rows.map(function (row) {
-            return '<tr>' + headers.map(function (header) {
-                return '<td>' + escapeHtml(row && row[header] != null ? row[header] : '') + '</td>';
-            }).join('') + '</tr>';
-        }).join('') + '</tbody></table></div>';
-    }
-
     function groupRowsByRegion(rows) {
-        var grouped = {
-            'North': [],
-            'South': [],
-            'East': [],
-            'West / Others': []
-        };
+        var grouped = { 'North': [], 'South': [], 'East': [], 'West / Others': [] };
 
-        rows.forEach(function (row) {
+        (Array.isArray(rows) ? rows : []).forEach(function (row) {
             var region = row.Region || row.region || 'West / Others';
             if (!grouped[region]) {
                 grouped[region] = [];
@@ -155,99 +50,148 @@ document.addEventListener('DOMContentLoaded', function () {
         return grouped;
     }
 
-    function fetchJson(url, options) {
-        return fetch(url, options).then(function (response) {
-            return response.text().then(function (text) {
-                var data;
-
-                try {
-                    data = JSON.parse(text);
-                } catch (error) {
-                    throw new Error('Server returned an invalid JSON response.');
-                }
-
-                if (!response.ok) {
-                    throw new Error(data.message || 'Request failed.');
-                }
-
-                return data;
-            });
-        });
-    }
-
-    function populateDropdown(selectElement, selectedValues, options) {
-        var values = Array.isArray(selectedValues) ? selectedValues : [];
-        var availableOptions = Array.isArray(options) ? options : [];
-
-        selectElement.innerHTML = availableOptions.map(function (option) {
-            var isSelected = values.indexOf(option.value) !== -1;
-            return '<option value="' + escapeHtml(option.value) + '"' + (isSelected ? ' selected' : '') + '>' + escapeHtml(option.label) + '</option>';
-        }).join('');
-    }
-
-    function readSelectValues(select) {
-        var values = [];
-
-        if (typeof window.jQuery !== 'undefined') {
-            var jqueryValues = window.jQuery(select).val();
-            if (Array.isArray(jqueryValues)) {
-                values = jqueryValues.slice();
-            } else if (jqueryValues) {
-                values = [jqueryValues];
-            }
-        }
-
-        if (values.length === 0) {
-            values = Array.from(select.selectedOptions).map(function (option) {
-                return option.value;
-            });
-        }
-
-        return values.filter(function (value) {
-            return value !== '' && value !== 'NONE';
-        });
-    }
-
-    function initializeRegionColleagueSelects(root, onChange) {
+    function buildPager(root, currentPage, totalPages, onChange) {
         if (!root) {
             return;
         }
 
-        root.querySelectorAll('.region-colleague-select').forEach(function (selectElement) {
-            selectElement.addEventListener('change', function () {
-                onChange((selectElement.getAttribute('data-region-select') || ''), readSelectValues(selectElement), selectElement);
-            });
-        });
-
-        if (typeof window.jQuery === 'undefined' || typeof window.jQuery.fn.select2 === 'undefined') {
+        if (totalPages <= 1) {
+            root.innerHTML = '';
             return;
         }
 
-        window.jQuery(root).find('.region-colleague-select').each(function () {
-            var select = window.jQuery(this);
+        var html = ['<button type="button" class="table-page-btn" data-page="' + (currentPage - 1) + '"' + (currentPage === 1 ? ' disabled' : '') + '>Prev</button>'];
+        for (var page = 1; page <= totalPages; page += 1) {
+            html.push('<button type="button" class="table-page-btn' + (page === currentPage ? ' is-active' : '') + '" data-page="' + page + '">' + page + '</button>');
+        }
+        html.push('<button type="button" class="table-page-btn" data-page="' + (currentPage + 1) + '"' + (currentPage === totalPages ? ' disabled' : '') + '>Next</button>');
+        root.innerHTML = html.join('');
 
-            if (select.hasClass('select2-hidden-accessible')) {
-                select.select2('destroy');
-            }
-
-            select.select2({
-                placeholder: 'Select colleagues',
-                width: '100%',
-                closeOnSelect: false,
-                allowClear: true
-            });
-
-            select.off('change.regionColleagues').on('change.regionColleagues', function () {
-                onChange((this.getAttribute('data-region-select') || ''), readSelectValues(this), this);
+        root.querySelectorAll('[data-page]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                var page = Number(button.getAttribute('data-page'));
+                if (page >= 1 && page <= totalPages) {
+                    onChange(page);
+                }
             });
         });
     }
 
-    function regionFieldId(region) {
-        return 'colleagues_' + String(region || '')
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, '_')
-            .replace(/^_+|_+$/g, '');
+    function renderTable(config) {
+        var headers = Array.isArray(config.headers) ? config.headers : [];
+        var rows = Array.isArray(config.rows) ? config.rows : [];
+        var rowsPerPage = Math.max(1, Number(config.rowsPerPage || 20));
+        var emptyMessage = config.emptyMessage || 'No data available.';
+        var totalPages = Math.max(1, Math.ceil(rows.length / rowsPerPage));
+
+        function draw(page) {
+            var currentPage = Math.min(Math.max(page, 1), totalPages);
+            var start = (currentPage - 1) * rowsPerPage;
+            var slice = rows.slice(start, start + rowsPerPage);
+
+            if (config.head) {
+                config.head.innerHTML = headers.length
+                    ? '<tr>' + headers.map(function (header) {
+                        return '<th>' + escapeHtml(header) + '</th>';
+                    }).join('') + '</tr>'
+                    : '';
+            }
+
+            if (!config.body) {
+                return;
+            }
+
+            if (!rows.length || !headers.length) {
+                config.body.innerHTML = '<tr><td colspan="' + Math.max(1, headers.length) + '" class="table-empty-state">' + escapeHtml(emptyMessage) + '</td></tr>';
+                if (config.countNode) {
+                    config.countNode.textContent = '0 rows';
+                }
+                if (config.paginationRoot) {
+                    config.paginationRoot.innerHTML = '';
+                }
+                return;
+            }
+
+            config.body.innerHTML = slice.map(function (row) {
+                return '<tr>' + headers.map(function (header) {
+                    return '<td>' + escapeHtml(row && row[header] != null ? row[header] : '') + '</td>';
+                }).join('') + '</tr>';
+            }).join('');
+
+            if (config.countNode) {
+                var end = Math.min(start + rowsPerPage, rows.length);
+                config.countNode.textContent = 'Showing ' + (start + 1) + '-' + end + ' of ' + rows.length + ' rows';
+            }
+
+            buildPager(config.paginationRoot, currentPage, totalPages, draw);
+        }
+
+        draw(1);
+    }
+
+    function renderCompactTable(rows, headers, emptyMessage) {
+        var safeHeaders = Array.isArray(headers) && headers.length ? headers : defaultPreviewHeaders;
+        if (!rows.length) {
+            return '<div class="table-responsive"><table class="table admin-table align-middle mb-0"><tbody><tr><td class="table-empty-state">' + escapeHtml(emptyMessage || 'No rows available.') + '</td></tr></tbody></table></div>';
+        }
+
+        return '<div class="table-responsive"><table class="table admin-table align-middle mb-0"><thead><tr>' + safeHeaders.map(function (header) {
+            return '<th>' + escapeHtml(header) + '</th>';
+        }).join('') + '</tr></thead><tbody>' + rows.map(function (row) {
+            return '<tr>' + safeHeaders.map(function (header) {
+                return '<td>' + escapeHtml(row && row[header] != null ? row[header] : '') + '</td>';
+            }).join('') + '</tr>';
+        }).join('') + '</tbody></table></div>';
+    }
+
+    function fetchJson(url, options) {
+        return fetch(url, options).then(function (response) {
+            return response.text().then(function (text) {
+                var payload;
+                try {
+                    payload = JSON.parse(text);
+                } catch (error) {
+                    throw new Error('Server returned an invalid JSON response.');
+                }
+
+                if (!response.ok || payload.status === 'error') {
+                    throw new Error(payload.message || 'Request failed.');
+                }
+
+                return payload;
+            });
+        });
+    }
+
+    function selectValues(select) {
+        return Array.from(select.selectedOptions || []).map(function (option) {
+            return option.value;
+        }).filter(function (value) {
+            return value !== '';
+        });
+    }
+
+    function renderChipList(root, values, emptyMessage) {
+        if (!root) {
+            return;
+        }
+
+        if (!values.length) {
+            root.innerHTML = '<span class="mapping-chip mapping-chip--muted">' + escapeHtml(emptyMessage) + '</span>';
+            return;
+        }
+
+        root.innerHTML = values.map(function (value) {
+            return '<span class="mapping-chip">' + escapeHtml(value) + '</span>';
+        }).join('');
+    }
+
+    function toggleNode(node, shouldShow) {
+        if (!node) {
+            return;
+        }
+
+        node.classList.toggle('d-none', !shouldShow);
     }
 
     var toggle = document.querySelector('[data-password-toggle]');
@@ -271,7 +215,6 @@ document.addEventListener('DOMContentLoaded', function () {
                 return;
             }
 
-            var file = uploadInput.files[0];
             if (typeof XLSX === 'undefined') {
                 uploadForm.submit();
                 return;
@@ -280,15 +223,14 @@ document.addEventListener('DOMContentLoaded', function () {
             var reader = new FileReader();
             reader.onload = function (event) {
                 try {
-                    var data = new Uint8Array(event.target.result);
-                    var workbook = XLSX.read(data, { type: 'array' });
+                    var workbook = XLSX.read(new Uint8Array(event.target.result), { type: 'array' });
                     var firstSheet = workbook.Sheets[workbook.SheetNames[0]];
                     var jsonRows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
                     if (uploadRowsField) {
                         uploadRowsField.value = JSON.stringify(jsonRows);
                     }
                     if (uploadHeadersField) {
-                        uploadHeadersField.value = JSON.stringify(jsonRows.length > 0 ? Object.keys(jsonRows[0]) : []);
+                        uploadHeadersField.value = JSON.stringify(jsonRows.length ? Object.keys(jsonRows[0]) : []);
                     }
                 } catch (error) {
                     if (uploadRowsField) {
@@ -304,7 +246,7 @@ document.addEventListener('DOMContentLoaded', function () {
             reader.onerror = function () {
                 uploadForm.submit();
             };
-            reader.readAsArrayBuffer(file);
+            reader.readAsArrayBuffer(uploadInput.files[0]);
         });
     }
 
@@ -334,313 +276,429 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    var previewRoot = document.querySelector('[data-mapping-preview]');
-    if (previewRoot) {
-        var previewRows = readJsonScript(previewRoot, '[data-preview-rows]');
-        var previewHeaders = readJsonScript(previewRoot, '[data-preview-headers]');
-        var nextButton = previewRoot.querySelector('[data-mapping-next]');
-        var totalRecords = previewRoot.querySelector('[data-total-records]');
-        var keyFields = previewRoot.querySelector('[data-key-fields]');
-        var regionUrl = previewRoot.getAttribute('data-region-url');
-
+    var uploadPreviewRoot = document.querySelector('[data-mapping-preview]');
+    if (uploadPreviewRoot) {
+        var uploadPreviewRows = readJsonScript(uploadPreviewRoot, '[data-preview-rows]');
+        var uploadPreviewHeaders = readJsonScript(uploadPreviewRoot, '[data-preview-headers]');
         renderTable({
-            headers: previewHeaders,
-            rows: previewRows,
-            head: previewRoot.querySelector('[data-preview-head]'),
-            body: previewRoot.querySelector('[data-preview-body]'),
-            countNode: previewRoot.querySelector('[data-preview-count]'),
-            paginationRoot: previewRoot.querySelector('[data-preview-pagination]'),
+            headers: uploadPreviewHeaders,
+            rows: uploadPreviewRows,
+            head: uploadPreviewRoot.querySelector('[data-preview-head]'),
+            body: uploadPreviewRoot.querySelector('[data-preview-body]'),
+            countNode: uploadPreviewRoot.querySelector('[data-preview-count]'),
+            paginationRoot: uploadPreviewRoot.querySelector('[data-preview-pagination]'),
             emptyMessage: 'No uploaded lead rows were found for preview.'
         });
 
-        if (totalRecords) {
-            totalRecords.textContent = String(previewRows.length);
-        }
-
-        if (keyFields) {
-            keyFields.textContent = previewHeaders.length > 0 ? previewHeaders.join(', ') : 'No columns detected';
-        }
-
+        var nextButton = uploadPreviewRoot.querySelector('[data-mapping-next]');
         if (nextButton) {
             nextButton.addEventListener('click', function () {
-                window.location.href = regionUrl;
+                window.location.href = uploadPreviewRoot.getAttribute('data-region-url');
             });
         }
     }
 
-    var regionRoot = document.querySelector('[data-region-grouping]');
+    var regionRoot = document.querySelector('[data-course-mapping-page]');
     if (regionRoot) {
-        var regionRows = readJsonAttribute(regionRoot, 'data-region-rows');
-        var regionSummary = readJsonAttribute(regionRoot, 'data-region-summary');
-        var summaryCards = regionRoot.querySelector('[data-region-summary-cards]');
-        var regionGroups = regionRoot.querySelector('[data-region-groups]');
-        var confirmAssignButton = regionRoot.querySelector('[data-confirm-assign]');
-        var apiUrl = regionRoot.getAttribute('data-api-url');
-        var groupedRows = groupRowsByRegion(regionRows);
-        var tableHeaders = regionRows.length > 0 ? Object.keys(regionRows[0]) : ['Lead ID', 'Name', 'Email', 'Phone', 'Course', 'Specialization', 'Campus', 'College Name', 'City', 'State', 'Region'];
+        var rows = readJsonAttribute(regionRoot, 'data-region-rows');
+        var summary = readJsonAttribute(regionRoot, 'data-region-summary');
+        var columns = readJsonAttribute(regionRoot, 'data-columns');
+        var colleges = readJsonAttribute(regionRoot, 'data-colleges');
+        var headers = rows.length ? Object.keys(rows[0]) : defaultPreviewHeaders;
+        var grouped = groupRowsByRegion(rows);
+        var modal = document.querySelector('[data-course-mapping-modal]');
+        var openModalButton = regionRoot.querySelector('[data-open-course-mapping]');
+        var closeModalButtons = document.querySelectorAll('[data-close-course-mapping]');
+        var regionPicker = modal ? modal.querySelector('[data-region-picker]') : null;
+        var selectedRegionSections = modal ? modal.querySelector('[data-selected-region-sections]') : null;
+        var columnSelect = modal ? modal.querySelector('[data-mapping-column]') : null;
+        var courseSelect = modal ? modal.querySelector('[data-course-values]') : null;
+        var specializationSelect = modal ? modal.querySelector('[data-specialization-select]') : null;
+        var collegeSelect = modal ? modal.querySelector('[data-college-select]') : null;
+        var courseChipList = modal ? modal.querySelector('[data-course-chip-list]') : null;
+        var collegeChipList = modal ? modal.querySelector('[data-college-chip-list]') : null;
+        var errorNode = modal ? modal.querySelector('[data-course-mapping-error]') : null;
+        var generateButton = modal ? modal.querySelector('[data-generate-preview]') : null;
+        var selectedRegions = regionOrder.slice();
+        var selectedCourses = [];
+        var selectedSpecialization = '';
+        var selectedColleges = [];
 
-        if (summaryCards) {
-            summaryCards.innerHTML = regionOrder.map(function (region) {
-                var item = regionSummary.find(function (entry) {
-                    return entry.region === region;
-                }) || { region: region, total: 0 };
-
-                return '<article class="metric-card mapping-region-card">' +
-                    '<div class="metric-card__header"><span>' + escapeHtml(region) + ' Region</span><span class="panel-chip">Leads</span></div>' +
-                    '<h3>' + escapeHtml(item.total) + '</h3>' +
-                    '<p>Mapped leads ready for assignment.</p>' +
-                    '</article>';
-            }).join('');
-        }
-
-        if (regionGroups) {
-            regionGroups.innerHTML = regionOrder.map(function (region) {
-                return '<article class="table-panel region-group-card">' +
-                    '<div class="panel-head panel-head--table"><div><h3>' + escapeHtml(region) + ' Region</h3><p class="table-subtext">Region name, lead count, and grouped leads.</p></div><span class="panel-chip">' + escapeHtml(groupedRows[region].length) + ' leads</span></div>' +
-                    renderCompactTable(groupedRows[region], tableHeaders) +
-                    '</article>';
-            }).join('');
-        }
-
-        if (confirmAssignButton) {
-            confirmAssignButton.addEventListener('click', function () {
-                var nextUrl = apiUrl + '?region_summary_json=' + encodeURIComponent(JSON.stringify(regionSummary));
-                window.location.href = nextUrl;
+        function selectedRows() {
+            return rows.filter(function (row) {
+                return selectedRegions.indexOf(row.Region) !== -1;
             });
         }
-    }
 
-    var assignmentRoot = document.querySelector('[data-colleague-assignment]');
-    if (assignmentRoot) {
-        var assignmentGrid = assignmentRoot.querySelector('[data-assignment-grid]');
-        var submitButton = assignmentRoot.querySelector('[data-assignment-submit]');
-        var successBox = assignmentRoot.querySelector('[data-assignment-success]');
-        var errorBox = assignmentRoot.querySelector('[data-assignment-error]');
-        var successMessage = assignmentRoot.querySelector('[data-assignment-success-message]');
-        var errorMessage = assignmentRoot.querySelector('[data-assignment-error-message]');
-        var loader = document.getElementById('upload-loader');
-        var summary = readJsonAttribute(assignmentRoot, 'data-region-summary');
-        var colleagueCatalog = readJsonAttribute(assignmentRoot, 'data-colleague-catalog');
-        var batchId = assignmentRoot.getAttribute('data-batch-id') || '';
-        var submitUrl = assignmentRoot.getAttribute('data-submit-url');
-        var successRedirect = assignmentRoot.getAttribute('data-success-redirect') || '/leads';
-        var regionLeadCounts = {};
-        var selectedColleaguesByRegion = {};
+        function selectedCourseRows() {
+            return selectedRows().filter(function (row) {
+                return !selectedCourses.length || selectedCourses.indexOf(row.Course) !== -1;
+            });
+        }
 
-        regionOrder.forEach(function (region) {
-            var summaryItem = summary.find(function (entry) {
-                return entry.region === region;
-            }) || { total: 0 };
+        function renderSummaryCards() {
+            var root = regionRoot.querySelector('[data-region-summary-cards]');
+            if (!root) {
+                return;
+            }
 
-            regionLeadCounts[region] = Number(summaryItem.total) || 0;
-            selectedColleaguesByRegion[region] = [];
+            root.innerHTML = regionOrder.map(function (region) {
+                var item = summary.find(function (entry) {
+                    return entry.region === region;
+                }) || { total: 0 };
+
+                return '<article class="metric-card mapping-region-card"><div class="metric-card__header"><span>' + escapeHtml(region) + '</span><span class="panel-chip">Leads</span></div><h3>' + escapeHtml(item.total) + '</h3><p>Region-wise grouping of leads is ready for mapping.</p></article>';
+            }).join('');
+        }
+
+        function renderRegionGroups() {
+            var root = regionRoot.querySelector('[data-region-groups]');
+            if (!root) {
+                return;
+            }
+
+            root.innerHTML = regionOrder.map(function (region) {
+                return '<article class="region-group-card"><div class="panel-head panel-head--table"><div><h3>' + escapeHtml(region) + '</h3><p class="table-subtext">Leads listed region-wise for quick review.</p></div><span class="panel-chip">' + escapeHtml(grouped[region].length) + ' leads</span></div>' + renderCompactTable(grouped[region], headers, 'No leads in this region.') + '</article>';
+            }).join('');
+        }
+
+        function renderRegionPicker() {
+            if (!regionPicker) {
+                return;
+            }
+
+            regionPicker.innerHTML = regionOrder.map(function (region) {
+                var checked = selectedRegions.indexOf(region) !== -1;
+                return '<label class="mapping-region-option"><input type="checkbox" value="' + escapeHtml(region) + '"' + (checked ? ' checked' : '') + '> <span>' + escapeHtml(region) + '</span></label>';
+            }).join('');
+
+            regionPicker.querySelectorAll('input[type="checkbox"]').forEach(function (input) {
+                input.addEventListener('change', function () {
+                    selectedRegions = Array.from(regionPicker.querySelectorAll('input:checked')).map(function (node) {
+                        return node.value;
+                    });
+                    if (!selectedRegions.length) {
+                        selectedRegions = regionOrder.slice();
+                        renderRegionPicker();
+                    }
+                    updateDependentFields();
+                });
+            });
+        }
+
+        function renderSelectedRegionSections() {
+            if (!selectedRegionSections) {
+                return;
+            }
+
+            selectedRegionSections.innerHTML = selectedRegions.map(function (region) {
+                return '<article class="mapping-selected-region-card"><div class="panel-head panel-head--table"><div><h3>' + escapeHtml(region) + ' Section</h3><p class="table-subtext">Filtered lead data for the selected region.</p></div><span class="panel-chip">' + escapeHtml(grouped[region].length) + ' leads</span></div>' + renderCompactTable(grouped[region], headers, 'No leads in this region.') + '</article>';
+            }).join('');
+        }
+
+        function renderColumnOptions() {
+            if (!columnSelect) {
+                return;
+            }
+
+            columnSelect.innerHTML = (Array.isArray(columns) ? columns : []).map(function (column) {
+                return '<option value="' + escapeHtml(column) + '"' + (column === 'Course' ? ' selected' : '') + '>' + escapeHtml(column) + '</option>';
+            }).join('');
+        }
+
+        function updateCourseOptions() {
+            if (!courseSelect) {
+                return;
+            }
+
+            var values = [];
+            selectedRows().forEach(function (row) {
+                if (row.Course && values.indexOf(row.Course) === -1) {
+                    values.push(row.Course);
+                }
+            });
+            values.sort();
+
+            if (!selectedCourses.length) {
+                selectedCourses = values.slice();
+            } else {
+                selectedCourses = selectedCourses.filter(function (value) {
+                    return values.indexOf(value) !== -1;
+                });
+                if (!selectedCourses.length) {
+                    selectedCourses = values.slice();
+                }
+            }
+
+            courseSelect.innerHTML = values.map(function (value) {
+                return '<option value="' + escapeHtml(value) + '"' + (selectedCourses.indexOf(value) !== -1 ? ' selected' : '') + '>' + escapeHtml(value) + '</option>';
+            }).join('');
+            renderChipList(courseChipList, selectedCourses, 'All available course values are selected.');
+        }
+
+        function updateSpecializationOptions() {
+            if (!specializationSelect) {
+                return;
+            }
+
+            var values = [];
+            selectedCourseRows().forEach(function (row) {
+                if (row.Specialization && values.indexOf(row.Specialization) === -1) {
+                    values.push(row.Specialization);
+                }
+            });
+            values.sort();
+
+            if (values.indexOf(selectedSpecialization) === -1) {
+                selectedSpecialization = values[0] || '';
+            }
+
+            specializationSelect.innerHTML = values.length
+                ? values.map(function (value) {
+                    return '<option value="' + escapeHtml(value) + '"' + (value === selectedSpecialization ? ' selected' : '') + '>' + escapeHtml(value) + '</option>';
+                }).join('')
+                : '<option value="">No specialization found</option>';
+        }
+
+        function updateCollegeOptions() {
+            if (!collegeSelect) {
+                return;
+            }
+
+            collegeSelect.innerHTML = (Array.isArray(colleges) ? colleges : []).map(function (college) {
+                var value = college.id || '';
+                var label = college.name || value;
+                return '<option value="' + escapeHtml(value) + '"' + (selectedColleges.indexOf(value) !== -1 ? ' selected' : '') + '>' + escapeHtml(label) + '</option>';
+            }).join('');
+            renderChipList(collegeChipList, selectedColleges.map(function (id) {
+                var match = colleges.find(function (college) {
+                    return college.id === id;
+                });
+                return match ? match.name : id;
+            }), 'No colleges selected yet.');
+        }
+
+        function updateDependentFields() {
+            renderSelectedRegionSections();
+            updateCourseOptions();
+            updateSpecializationOptions();
+        }
+
+        function setModalOpen(isOpen) {
+            if (!modal) {
+                return;
+            }
+
+            modal.classList.toggle('d-none', !isOpen);
+            document.body.classList.toggle('modal-is-open', isOpen);
+            if (errorNode) {
+                errorNode.classList.add('d-none');
+                errorNode.textContent = '';
+            }
+        }
+
+        renderSummaryCards();
+        renderRegionGroups();
+        renderRegionPicker();
+        renderColumnOptions();
+        updateDependentFields();
+        updateCollegeOptions();
+
+        if (courseSelect) {
+            courseSelect.addEventListener('change', function () {
+                selectedCourses = selectValues(courseSelect);
+                if (!selectedCourses.length) {
+                    selectedCourses = Array.from(courseSelect.options).map(function (option) {
+                        return option.value;
+                    });
+                }
+                renderChipList(courseChipList, selectedCourses, 'All available course values are selected.');
+                updateSpecializationOptions();
+            });
+        }
+
+        if (specializationSelect) {
+            specializationSelect.addEventListener('change', function () {
+                selectedSpecialization = specializationSelect.value || '';
+            });
+        }
+
+        if (collegeSelect) {
+            collegeSelect.addEventListener('change', function () {
+                selectedColleges = selectValues(collegeSelect);
+                updateCollegeOptions();
+            });
+        }
+
+        if (openModalButton) {
+            openModalButton.addEventListener('click', function () {
+                setModalOpen(true);
+            });
+        }
+
+        closeModalButtons.forEach(function (button) {
+            button.addEventListener('click', function () {
+                setModalOpen(false);
+            });
         });
 
-        function setLoadingState(isLoading) {
-            if (loader) {
-                loader.style.display = isLoading ? 'block' : 'none';
-            }
-            if (!submitButton) {
-                return;
-            }
-            submitButton.disabled = isLoading;
-            submitButton.textContent = isLoading ? 'Submitting...' : 'Submit';
-        }
-
-        function hideMessages() {
-            if (successBox) {
-                successBox.classList.add('d-none');
-            }
-            if (errorBox) {
-                errorBox.classList.add('d-none');
-            }
-        }
-
-        function getRegionCatalogItems(region) {
-            var catalog = colleagueCatalog && typeof colleagueCatalog === 'object' ? colleagueCatalog[region] : [];
-            var items = Array.isArray(catalog)
-                ? catalog
-                : (catalog && typeof catalog === 'object' ? Object.keys(catalog).map(function (key) {
-                    return catalog[key];
-                }) : []);
-
-            return items.filter(function (item) {
-                return item && (item.id != null || item.name != null);
-            });
-        }
-
-        function regionHasConfiguredColleagues(region) {
-            return getRegionCatalogItems(region).some(function (item) {
-                return String(item && item.id != null ? item.id : '') !== '';
-            });
-        }
-
-        function getRegionOptions(region) {
-            var options = getRegionCatalogItems(region).map(function (item) {
-                return {
-                    value: String(item && item.id != null ? item.id : ''),
-                    label: String(item && item.name != null ? item.name : item && item.id != null ? item.id : '')
-                };
-            });
-
-            options = options.filter(function (option) {
-                return option.value !== '';
-            });
-
-            if (options.length === 0 && regionLeadCounts[region] > 0) {
-                return [];
-            }
-
-            return options;
-        }
-
-        function clearRegionErrors() {
-            assignmentGrid.querySelectorAll('[data-region-card]').forEach(function (card) {
-                card.classList.remove('assignment-card--error');
-            });
-
-            assignmentGrid.querySelectorAll('[data-region-error]').forEach(function (message) {
-                message.textContent = '';
-                message.classList.add('d-none');
-            });
-        }
-
-        function showRegionError(region, message) {
-            var card = assignmentGrid.querySelector('[data-region-card][data-region="' + region + '"]');
-            if (!card) {
-                return;
-            }
-
-            var errorNode = card.querySelector('[data-region-error]');
-            card.classList.add('assignment-card--error');
-
-            if (errorNode) {
-                errorNode.textContent = message;
-                errorNode.classList.remove('d-none');
-            }
-        }
-
-        function validateAssignments() {
-            clearRegionErrors();
-
-            for (var index = 0; index < regionOrder.length; index += 1) {
-                var region = regionOrder[index];
-                if ((regionLeadCounts[region] || 0) === 0) {
-                    continue;
-                }
-
-                if (!regionHasConfiguredColleagues(region)) {
-                    continue;
-                }
-
-                if (!Array.isArray(selectedColleaguesByRegion[region]) || selectedColleaguesByRegion[region].length === 0) {
-                    showRegionError(region, 'Please select at least one colleague for regions that have leads.');
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        function buildAssignmentsPayload() {
-            var assignments = {};
-
-            regionOrder.forEach(function (region) {
-                assignments[region] = Array.isArray(selectedColleaguesByRegion[region]) ? selectedColleaguesByRegion[region].slice() : [];
-            });
-
-            return assignments;
-        }
-
-        function renderAssignmentCards() {
-            assignmentGrid.innerHTML = regionOrder.map(function (region) {
-                var leadsCount = regionLeadCounts[region] || 0;
-                var fieldId = regionFieldId(region);
-                var hasConfiguredColleagues = regionHasConfiguredColleagues(region);
-                var isDisabled = leadsCount === 0 || !hasConfiguredColleagues;
-                var helperText = 'Select at least one colleague for this region.';
-                var statusText = leadsCount > 0
-                    ? escapeHtml(leadsCount) + ' leads ready for assignment.'
-                    : 'No leads ready for assignment.';
-
-                if (leadsCount === 0) {
-                    helperText = 'No leads available. Selection not required.';
-                } else if (!hasConfiguredColleagues) {
-                    helperText = 'No colleagues configured for this region. Leads will not be transferred.';
-                    statusText = escapeHtml(leadsCount) + ' leads ready for assignment. No colleagues configured for this region.';
-                    selectedColleaguesByRegion[region] = [];
-                }
-
-                return '<article class="info-panel assignment-card" data-region-card data-region="' + escapeHtml(region) + '">' +
-                    '<p class="hero-label">' + escapeHtml(region) + '</p>' +
-                    '<h3>' + escapeHtml(region) + ' Region</h3>' +
-                    '<p>' + statusText + '</p>' +
-                    '<label class="form-label" for="' + escapeHtml(fieldId) + '">Select Colleagues</label>' +
-                    '<select class="form-select assignment-select region-colleague-select" name="colleagues[' + escapeHtml(region) + '][]" id="' + escapeHtml(fieldId) + '" data-region-select="' + escapeHtml(region) + '"' + (isDisabled ? ' disabled' : '') + ' multiple></select>' +
-                    '<p class="assignment-card__hint' + (isDisabled ? ' assignment-card__hint--muted' : '') + '">' + escapeHtml(helperText) + '</p>' +
-                    '<p class="assignment-card__error d-none" data-region-error></p>' +
-                    '</article>';
-            }).join('');
-
-            assignmentGrid.querySelectorAll('[data-region-select]').forEach(function (select) {
-                var region = select.getAttribute('data-region-select') || '';
-                populateDropdown(select, selectedColleaguesByRegion[region], getRegionOptions(region));
-            });
-
-            initializeRegionColleagueSelects(assignmentGrid, function (region, values) {
-                selectedColleaguesByRegion[region] = values.slice();
-
-                var card = assignmentGrid.querySelector('[data-region-card][data-region="' + region + '"]');
-                if (card && values.length > 0) {
-                    card.classList.remove('assignment-card--error');
-
-                    var errorNode = card.querySelector('[data-region-error]');
-                    if (errorNode) {
-                        errorNode.textContent = '';
-                        errorNode.classList.add('d-none');
-                    }
-                }
-            });
-        }
-        renderAssignmentCards();
-
-        if (submitButton) {
-            submitButton.addEventListener('click', function () {
-                hideMessages();
-                clearRegionErrors();
-
-                if (!validateAssignments()) {
-                    if (errorBox && errorMessage) {
-                        errorMessage.textContent = 'Please select at least one colleague for every region that has leads.';
-                        errorBox.classList.remove('d-none');
-                    }
+        if (generateButton) {
+            generateButton.addEventListener('click', function () {
+                if (!selectedSpecialization) {
+                    errorNode.textContent = 'Select one specialization before generating preview.';
+                    errorNode.classList.remove('d-none');
                     return;
                 }
 
-                setLoadingState(true);
-                fetchJson(submitUrl, {
+                if (!selectedColleges.length) {
+                    errorNode.textContent = 'Select one or more colleges before generating preview.';
+                    errorNode.classList.remove('d-none');
+                    return;
+                }
+
+                generateButton.disabled = true;
+                fetchJson(regionRoot.getAttribute('data-generate-preview-url'), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        batch_id: batchId,
-                        assignments: buildAssignmentsPayload()
+                        batch_id: regionRoot.getAttribute('data-batch-id') || '',
+                        regions: selectedRegions,
+                        column: columnSelect ? columnSelect.value : 'Course',
+                        course_values: selectedCourses,
+                        specialization: selectedSpecialization,
+                        college_ids: selectedColleges
                     })
-                }).then(function (response) {
-                    if (response.status === 'success') {
-                        window.location.href = successRedirect || '/leads';
-                        return;
-                    }
-
-                    throw new Error(response.message || 'Upload failed');
+                }).then(function () {
+                    window.location.href = regionRoot.getAttribute('data-preview-page-url');
                 }).catch(function (error) {
-                    if (errorBox && errorMessage) {
-                        errorMessage.textContent = error.message || 'Upload failed';
-                        errorBox.classList.remove('d-none');
-                    }
+                    errorNode.textContent = error.message || 'Unable to generate preview.';
+                    errorNode.classList.remove('d-none');
                 }).finally(function () {
-                    setLoadingState(false);
+                    generateButton.disabled = false;
+                });
+            });
+        }
+    }
+
+    var previewRoot = document.querySelector('[data-mapping-courses-preview]');
+    if (previewRoot) {
+        var previewRows = readJsonScript(previewRoot, '[data-preview-rows]');
+        var previewHeaders = readJsonScript(previewRoot, '[data-preview-headers]');
+        var previewGrouped = readJsonAttribute(previewRoot, 'data-preview-grouped');
+        var confirmButton = previewRoot.querySelector('[data-confirm-mapping]');
+        var saveButton = previewRoot.querySelector('[data-save-duration]');
+        var durationMessage = previewRoot.querySelector('[data-duration-message]');
+        var batchSelect = previewRoot.querySelector('[data-batch-size]');
+        var delaySelect = previewRoot.querySelector('[data-delay-size]');
+        var customBatchWrap = previewRoot.querySelector('[data-custom-batch-wrap]');
+        var customDelayWrap = previewRoot.querySelector('[data-custom-delay-wrap]');
+        var customBatchInput = previewRoot.querySelector('[data-custom-batch-size]');
+        var customDelayInput = previewRoot.querySelector('[data-custom-delay-size]');
+        var isConfirmed = previewRoot.getAttribute('data-confirmed') === 'true';
+
+        renderTable({
+            headers: previewHeaders.length ? previewHeaders : defaultPreviewHeaders,
+            rows: previewRows,
+            rowsPerPage: 10,
+            head: previewRoot.querySelector('[data-preview-head]'),
+            body: previewRoot.querySelector('[data-preview-body]'),
+            countNode: previewRoot.querySelector('[data-preview-count]'),
+            paginationRoot: previewRoot.querySelector('[data-preview-pagination]'),
+            emptyMessage: 'No leads available in preview.'
+        });
+
+        var regionGroupsRoot = previewRoot.querySelector('[data-preview-region-groups]');
+        if (regionGroupsRoot) {
+            var groupedRows = previewGrouped && typeof previewGrouped === 'object' ? previewGrouped : {};
+            regionGroupsRoot.innerHTML = regionOrder.map(function (region) {
+                var regionRows = Array.isArray(groupedRows[region]) ? groupedRows[region] : [];
+                return '<article class="region-group-card"><div class="panel-head panel-head--table"><div><h3>' + escapeHtml(region) + '</h3><p class="table-subtext">Preview rows grouped region-wise.</p></div><span class="panel-chip">' + escapeHtml(regionRows.length) + ' leads</span></div>' + renderCompactTable(regionRows.slice(0, 10), defaultPreviewHeaders, 'No preview rows in this region.') + '</article>';
+            }).join('');
+        }
+
+        function syncCustomFields() {
+            toggleNode(customBatchWrap, batchSelect && batchSelect.value === 'custom');
+            toggleNode(customDelayWrap, delaySelect && delaySelect.value === 'custom');
+        }
+
+        function setMessage(message, isError) {
+            if (!durationMessage) {
+                return;
+            }
+
+            durationMessage.textContent = message;
+            durationMessage.classList.remove('d-none');
+            durationMessage.classList.toggle('mapping-preview-message--error', !!isError);
+            durationMessage.classList.toggle('mapping-preview-message--success', !isError);
+        }
+
+        if (batchSelect) {
+            batchSelect.addEventListener('change', syncCustomFields);
+        }
+        if (delaySelect) {
+            delaySelect.addEventListener('change', syncCustomFields);
+        }
+        syncCustomFields();
+
+        if (confirmButton) {
+            confirmButton.disabled = isConfirmed;
+            confirmButton.textContent = isConfirmed ? 'Mapping Confirmed' : 'Confirm Mapping';
+            confirmButton.addEventListener('click', function () {
+                if (isConfirmed) {
+                    return;
+                }
+
+                confirmButton.disabled = true;
+                fetchJson(previewRoot.getAttribute('data-confirm-url'), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        mapping_configuration_id: previewRoot.getAttribute('data-mapping-configuration-id')
+                    })
+                }).then(function () {
+                    isConfirmed = true;
+                    confirmButton.textContent = 'Mapping Confirmed';
+                    setMessage('Mapping confirmed. Save duration settings to start background sending.', false);
+                }).catch(function (error) {
+                    confirmButton.disabled = false;
+                    setMessage(error.message || 'Unable to confirm mapping.', true);
+                });
+            });
+        }
+
+        if (saveButton) {
+            saveButton.addEventListener('click', function () {
+                if (!isConfirmed) {
+                    setMessage('Confirm mapping before saving duration settings.', true);
+                    return;
+                }
+
+                saveButton.disabled = true;
+                setMessage('Sending leads in background. Redirecting to leads page.', false);
+
+                fetchJson(previewRoot.getAttribute('data-save-duration-url'), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        batch_size: batchSelect ? batchSelect.value : '50',
+                        custom_batch_size: customBatchInput ? customBatchInput.value : '',
+                        delay: delaySelect ? delaySelect.value : '0.2',
+                        custom_delay: customDelayInput ? customDelayInput.value : ''
+                    })
+                }).then(function (payload) {
+                    var redirect = payload.data && payload.data.redirect ? payload.data.redirect : '/leads';
+                    setTimeout(function () {
+                        window.location.href = redirect;
+                    }, 400);
+                }).catch(function (error) {
+                    saveButton.disabled = false;
+                    setMessage(error.message || 'Unable to save duration settings.', true);
                 });
             });
         }
@@ -660,15 +718,3 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 });
-
-
-
-
-
-
-
-
-
-
-
-

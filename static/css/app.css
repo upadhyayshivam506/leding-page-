@@ -1660,3 +1660,202 @@ a {
         padding-right: 18px;
     }
 }
+
+.mapping-region-overview,
+.mapping-preview-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 22px;
+    padding: 0 32px;
+}
+
+.mapping-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+}
+
+.mapping-modal__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(7, 8, 14, 0.7);
+    backdrop-filter: blur(8px);
+}
+
+.mapping-modal__dialog {
+    position: relative;
+    z-index: 1;
+    width: min(1040px, 100%);
+    max-height: calc(100vh - 48px);
+    overflow: auto;
+    border-radius: 28px;
+    background: linear-gradient(180deg, rgba(28, 29, 39, 0.98), rgba(18, 19, 28, 0.99));
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.38);
+}
+
+.mapping-modal__header,
+.mapping-modal__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 24px 28px;
+}
+
+.mapping-modal__header {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.mapping-modal__footer {
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    flex-wrap: wrap;
+}
+
+.mapping-modal__body {
+    display: grid;
+    gap: 22px;
+    padding: 28px;
+}
+
+.mapping-modal__close {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.05);
+    color: #fff;
+    font-size: 1.5rem;
+}
+
+.mapping-modal-step,
+.mapping-selected-region-card {
+    border-radius: 22px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 22px;
+}
+
+.mapping-modal-step__head {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.mapping-modal-step__head span {
+    width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: rgba(166, 109, 255, 0.18);
+    color: #fff;
+    font-weight: 700;
+}
+
+.mapping-modal-step__head h4 {
+    margin: 0 0 6px;
+    color: #fff;
+}
+
+.mapping-modal-step__head p,
+.mapping-modal__message,
+.mapping-preview-message {
+    margin: 0;
+    color: rgba(247, 245, 255, 0.74);
+}
+
+.mapping-preview-message {
+    margin-top: 16px;
+    padding: 14px 16px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.mapping-preview-message--success {
+    background: rgba(21, 185, 124, 0.14);
+    color: #d8ffef;
+}
+
+.mapping-preview-message--error,
+.mapping-modal__message {
+    background: rgba(228, 106, 131, 0.14);
+    color: #ffd9df;
+    padding: 14px 16px;
+    border-radius: 14px;
+}
+
+.mapping-region-picker,
+.mapping-chip-list,
+.mapping-selected-regions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.mapping-selected-regions {
+    display: grid;
+    grid-template-columns: 1fr;
+    margin-top: 18px;
+}
+
+.mapping-region-option,
+.mapping-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: #fff;
+}
+
+.mapping-chip--muted {
+    color: rgba(247, 245, 255, 0.6);
+}
+
+.mapping-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+}
+
+.region-groups--preview {
+    padding-top: 0;
+}
+
+body.modal-is-open {
+    overflow: hidden;
+}
+
+@media (max-width: 1199.98px) {
+    .mapping-region-overview,
+    .mapping-preview-summary,
+    .mapping-form-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 991.98px) {
+    .mapping-region-overview,
+    .mapping-preview-summary {
+        padding-left: 22px;
+        padding-right: 22px;
+    }
+
+    .mapping-modal {
+        padding: 12px;
+    }
+
+    .mapping-modal__header,
+    .mapping-modal__body,
+    .mapping-modal__footer {
+        padding-left: 18px;
+        padding-right: 18px;
+    }
+}
