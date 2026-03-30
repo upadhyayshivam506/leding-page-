@@ -11,10 +11,10 @@
 
 <section class="assignment-page" data-colleague-assignment data-region-summary="{{region_summary_attr_json}}" data-colleague-catalog="{{colleague_catalog_attr_json}}" data-fetch-url="{{fetch_colleagues_url}}" data-submit-url="{{assign_colleagues_url}}" data-success-redirect="{{leads_url}}" data-batch-id="{{uploaded_batch_id}}">
     <div class="assignment-grid" data-assignment-grid></div>
-    <div id="upload-loader" style="display:none;">Uploading leads...</div>
+    <div id="upload-loader" style="display:none;">Pushing region leads to configured college APIs...</div>
     <div class="assignment-success d-none" data-assignment-success>
         <h3>Lead push completed.</h3>
-        <p data-assignment-success-message>The selected region assignments were processed successfully.</p>
+        <p data-assignment-success-message>All configured region-wise API pushes were processed successfully.</p>
     </div>
     <div class="assignment-success d-none" data-assignment-error>
         <h3>Lead push failed.</h3>
@@ -22,6 +22,6 @@
     </div>
     <div class="mapping-actions mapping-actions--footer">
         <a href="{{mapping_region_url}}" class="panel-link topbar-action-link">Back</a>
-        <button type="button" class="btn dashboard-logout" data-assignment-submit id="submit-button">Submit</button>
+        <button type="button" class="btn dashboard-logout" data-assignment-submit id="submit-button">Push Region Leads</button>
     </div>
 </section>

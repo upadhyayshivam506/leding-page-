@@ -107,6 +107,14 @@ function getSelectedColleagues(string $region, array $selectedIds): array
     return $selected;
 }
 
+function getAllColleaguesByRegion(string $region): array
+{
+    $catalog = colleague_catalog();
+    $normalizedRegion = normalize_region_name($region);
+
+    return array_values($catalog[$normalizedRegion] ?? []);
+}
+
 function fetch_leads_by_region(string $batchId, string $region): array
 {
     $statement = db()->prepare(
@@ -744,6 +752,87 @@ function process_region_assignments(string $batchId, array $assignments): array
                 $result['details'][] = [
                     'lead_id' => (string) ($lead['lead_id'] ?? ''),
                     'region' => $normalizedRegion,
+                    'college_id' => (string) ($colleague['id'] ?? ''),
+                    'status' => $status,
+                    'http_code' => (int) ($push['http_code'] ?? 0),
+                    'response' => $response,
+                ];
+            }
+        }
+    }
+
+    return $result;
+}
+
+function process_batch_region_push_to_all_colleges(string $batchId): array
+{
+    $batchId = trim($batchId);
+    if ($batchId === '') {
+        throw new InvalidArgumentException('Missing upload batch id.');
+    }
+
+    $result = [
+        'batch_id' => $batchId,
+        'regions_processed' => 0,
+        'regions_skipped' => 0,
+        'leads_processed' => 0,
+        'api_calls' => 0,
+        'success_count' => 0,
+        'failed_count' => 0,
+        'details' => [],
+    ];
+
+    foreach (leads_api_regions() as $region) {
+        $leads = fetch_leads_by_region($batchId, $region);
+        $colleagues = getAllColleaguesByRegion($region);
+
+        if ($leads === []) {
+            $result['regions_skipped']++;
+            $result['details'][] = [
+                'region' => $region,
+                'status' => 'skipped',
+                'response' => 'Region skipped because it has no leads.',
+            ];
+            continue;
+        }
+
+        if ($colleagues === []) {
+            $result['regions_skipped']++;
+            $result['details'][] = [
+                'region' => $region,
+                'status' => 'skipped',
+                'response' => 'Region skipped because no colleges are configured.',
+            ];
+            continue;
+        }
+
+        $result['regions_processed']++;
+        $result['leads_processed'] += count($leads);
+
+        foreach ($leads as $lead) {
+            foreach ($colleagues as $colleague) {
+                $push = pushLeadToAPI($lead, (string) ($colleague['id'] ?? ''), $colleague);
+                $status = $push['success'] ? 'success' : 'failed';
+                $response = is_string($push['response'] ?? null) ? $push['response'] : json_encode($push);
+
+                log_lead_push(
+                    (string) ($lead['lead_id'] ?? ''),
+                    $region,
+                    (string) ($colleague['id'] ?? ''),
+                    $status,
+                    $response
+                );
+
+                $result['api_calls']++;
+                if ($push['success']) {
+                    $result['success_count']++;
+                } else {
+                    $result['failed_count']++;
+                }
+
+                $result['details'][] = [
+                    'lead_id' => (string) ($lead['lead_id'] ?? ''),
+                    'region' => $region,
                     'college_id' => (string) ($colleague['id'] ?? ''),
                     'status' => $status,
                     'http_code' => (int) ($push['http_code'] ?? 0),

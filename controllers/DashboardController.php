@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Controllers;
 
 use Models\Lead;
+use Models\LeadPushLog;
 use PDOException;
 use RuntimeException;
 use Services\AuthService;
@@ -13,7 +14,8 @@ final class DashboardController
 {
     public function __construct(
         private readonly AuthService $auth = new AuthService(),
-        private readonly Lead $leads = new Lead()
+        private readonly Lead $leads = new Lead(),
+        private readonly LeadPushLog $leadPushLogs = new LeadPushLog()
     )
     {
     }
@@ -48,6 +50,28 @@ final class DashboardController
             'lead_rows_json' => $this->json($leadData['rows']),
             'lead_headers_json' => $this->json($leadData['headers']),
             'lead_total_records' => e((string) count($leadData['rows'])),
+        ]);
+    }
+
+    public function leadPushLogs(): void
+    {
+        $user = $this->guard();
+        $logData = $this->leadPushLogDataForView();
+        $logStats = $this->leadPushLogStats();
+
+        $this->renderAdminPage($user, 'lead-push-logs', 'dashboard/pages/lead-push-logs', [
+            'title' => e('Lead Push Logs'),
+            'page_kicker' => e('Delivery audit'),
+            'page_title' => e('Lead Push Logs'),
+            'page_description' => e('Review every API push attempt with status, region, college, response, and delivery timestamp.'),
+            'flash_alert' => render_alert(flash(), 'dashboard-alert'),
+            'log_rows_json' => $this->json($logData['rows']),
+            'log_headers_json' => $this->json($logData['headers']),
+            'log_total_records' => e((string) count($logData['rows'])),
+            'log_total_attempts' => e((string) $logStats['total_attempts']),
+            'log_success_count' => e((string) $logStats['success_count']),
+            'log_failed_count' => e((string) $logStats['failed_count']),
+            'log_distinct_colleges' => e((string) $logStats['distinct_colleges']),
         ]);
     }
 
@@ -173,8 +197,8 @@ final class DashboardController
         $this->renderAdminPage($user, 'leads', 'leads/pages/mapping-api-colleagues', [
             'title' => e('Assign Colleagues'),
             'page_kicker' => e('Step 3 of 3'),
-            'page_title' => e('Assign Region Colleagues'),
-            'page_description' => e('Select one or more colleagues from the dropdown and push all leads to the selected APIs.'),
+            'page_title' => e('Region API Coverage'),
+            'page_description' => e('Review region-wise college coverage. On submit, each region sends its leads to all colleges configured for that region.'),
             'flash_alert' => '',
             'page_action' => '<a href="' . e(app_url('leads/mapping/region')) . '" class="panel-link topbar-action-link">Back</a>',
             'uploaded_file_name' => e((string) ($upload['original_name'] ?? '')),
@@ -574,6 +598,56 @@ final class DashboardController
         }
     }
 
+    private function leadPushLogDataForView(): array
+    {
+        try {
+            $rows = $this->leadPushLogs->all();
+        } catch (PDOException) {
+            return [
+                'rows' => [],
+                'headers' => ['Lead ID', 'Region', 'College ID', 'Status', 'Response', 'Created At'],
+            ];
+        }
+
+        return [
+            'rows' => array_map(static function (array $row): array {
+                $response = trim((string) ($row['response'] ?? ''));
+                if (strlen($response) > 140) {
+                    $response = substr($response, 0, 140) . '...';
+                }
+
+                return [
+                    'Lead ID' => (string) ($row['lead_id'] ?? ''),
+                    'Region' => (string) ($row['region'] ?? ''),
+                    'College ID' => (string) ($row['college_id'] ?? ''),
+                    'Status' => (string) ($row['api_status'] ?? ''),
+                    'Response' => $response,
+                    'Created At' => (string) ($row['created_at'] ?? ''),
+                ];
+            }, $rows),
+            'headers' => ['Lead ID', 'Region', 'College ID', 'Status', 'Response', 'Created At'],
+        ];
+    }
+
+    private function leadPushLogStats(): array
+    {
+        try {
+            return [
+                'total_attempts' => $this->leadPushLogs->countAll(),
+                'success_count' => $this->leadPushLogs->countByStatus('success'),
+                'failed_count' => $this->leadPushLogs->countByStatus('failed'),
+                'distinct_colleges' => $this->leadPushLogs->countDistinctColleges(),
+            ];
+        } catch (PDOException) {
+            return [
+                'total_attempts' => 0,
+                'success_count' => 0,
+                'failed_count' => 0,
+                'distinct_colleges' => 0,
+            ];
+        }
+    }
+
     private function layoutData(array $user, string $activePage, array $overrides = []): array
     {
         $base = [
@@ -587,8 +661,10 @@ final class DashboardController
             'leads_url' => e(app_url('leads')),
             'api_settings_url' => e(app_url('api-settings')),
             'system_config_url' => e(app_url('system-config')),
+            'lead_push_logs_url' => e(app_url('lead-push-logs')),
             'dashboard_active' => $activePage === 'dashboard' ? 'is-active' : '',
             'leads_active' => $activePage === 'leads' ? 'is-active' : '',
+            'lead_push_logs_active' => $activePage === 'lead-push-logs' ? 'is-active' : '',
             'api_settings_active' => $activePage === 'api-settings' ? 'is-active' : '',
             'system_config_active' => $activePage === 'system-config' ? 'is-active' : '',
             'flash_alert' => '',
@@ -604,6 +680,13 @@ final class DashboardController
             'lead_rows_json' => '[]',
             'lead_headers_json' => '[]',
             'lead_total_records' => '0',
+            'log_rows_json' => '[]',
+            'log_headers_json' => '[]',
+            'log_total_records' => '0',
+            'log_total_attempts' => '0',
+            'log_success_count' => '0',
+            'log_failed_count' => '0',
+            'log_distinct_colleges' => '0',
             'region_rows_attr_json' => '[]',
             'region_summary_attr_json' => '[]',
             'colleague_catalog_attr_json' => '[]',

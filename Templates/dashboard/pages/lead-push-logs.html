@@ -1,0 +1,54 @@
+<section class="page-heading">
+    <p class="hero-label">{{page_kicker}}</p>
+    <h2>{{page_title}}</h2>
+</section>
+
+<section class="stats-grid">
+    <article class="metric-card metric-card--accent">
+        <div class="metric-card__header">
+            <span>Total Push Attempts</span>
+            <span class="metric-trend">Logs</span>
+        </div>
+        <h3>{{log_total_attempts}}</h3>
+    </article>
+    <article class="metric-card">
+        <div class="metric-card__header">
+            <span>Successful Pushes</span>
+            <span class="metric-trend metric-trend--success">Success</span>
+        </div>
+        <h3>{{log_success_count}}</h3>
+    </article>
+    <article class="metric-card metric-card--dangerSoft">
+        <div class="metric-card__header">
+            <span>Failed Pushes</span>
+            <span class="metric-trend metric-trend--danger">Failed</span>
+        </div>
+        <h3>{{log_failed_count}}</h3>
+    </article>
+    <article class="metric-card">
+        <div class="metric-card__header">
+            <span>Colleges Hit</span>
+            <span class="metric-trend">Distinct</span>
+        </div>
+        <h3>{{log_distinct_colleges}}</h3>
+    </article>
+</section>
+
+<section class="table-panel leads-table-panel" data-lead-push-logs-table>
+    <div class="panel-head panel-head--table">
+        <div>
+            <h3>API Delivery Logs</h3>
+            <p class="table-subtext">Every lead push attempt is listed here with the response snapshot and timestamp.</p>
+        </div>
+        <span class="panel-chip" data-table-count>{{log_total_records}} logs</span>
+    </div>
+    <div class="table-responsive">
+        <table class="table admin-table align-middle mb-0">
+            <thead data-table-head></thead>
+            <tbody data-table-body></tbody>
+        </table>
+    </div>
+    <div class="table-pagination" data-table-pagination></div>
+    <script type="application/json" data-table-rows>{{log_rows_json}}</script>
+    <script type="application/json" data-table-headers>{{log_headers_json}}</script>
+</section>

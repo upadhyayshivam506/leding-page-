@@ -321,6 +321,19 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    var logsRoot = document.querySelector('[data-lead-push-logs-table]');
+    if (logsRoot) {
+        renderTable({
+            headers: readJsonScript(logsRoot, '[data-table-headers]'),
+            rows: readJsonScript(logsRoot, '[data-table-rows]'),
+            head: logsRoot.querySelector('[data-table-head]'),
+            body: logsRoot.querySelector('[data-table-body]'),
+            countNode: logsRoot.querySelector('[data-table-count]'),
+            paginationRoot: logsRoot.querySelector('[data-table-pagination]'),
+            emptyMessage: 'No lead push logs are available yet.'
+        });
+    }
+
     var previewRoot = document.querySelector('[data-mapping-preview]');
     if (previewRoot) {
         var previewRows = readJsonScript(previewRoot, '[data-preview-rows]');
@@ -475,7 +488,7 @@ document.addEventListener('DOMContentLoaded', function () {
             });
 
             if (options.length === 0 && regionLeadCounts[region] > 0) {
-                return [{ value: '', label: 'No colleagues configured' }];
+                return [];
             }
 
             return options;
@@ -597,6 +610,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 clearRegionErrors();
 
                 if (!validateAssignments()) {
+                    if (errorBox && errorMessage) {
+                        errorMessage.textContent = 'Please select at least one colleague for every region that has leads.';
+                        errorBox.classList.remove('d-none');
+                    }
                     return;
                 }
 

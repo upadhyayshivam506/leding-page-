@@ -30,6 +30,9 @@ try {
 
         $result = process_selected_colleagues_push($colleagues);
     }
+    if ($batchId !== '' && !is_array($assignments) && !isset($payload['colleagues'])) {
+        $result = process_batch_region_push_to_all_colleges($batchId);
+    }
 
     echo json_encode([
         'status' => 'success',
