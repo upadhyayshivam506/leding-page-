@@ -4,16 +4,17 @@
 </section>
 
 <section class="mapping-stepper" data-stepper data-current-step="{{mapping_step}}">
-    <div class="mapping-step"><span>1</span><strong>Upload</strong></div>
-    <div class="mapping-step"><span>2</span><strong>Region</strong></div>
-    <div class="mapping-step"><span>3</span><strong>Preview</strong></div>
+    <div class="mapping-step" data-step-id="upload"><span>1</span><strong>Upload</strong></div>
+    <div class="mapping-step" data-step-id="region"><span>2</span><strong>Region</strong></div>
+    <div class="mapping-step" data-step-id="specialization-mapping"><span>3</span><strong>Specialization Mapping</strong></div>
+    <div class="mapping-step" data-step-id="api-duration"><span>4</span><strong>API Duration</strong></div>
 </section>
 
-<section class="mapping-preview-page" data-mapping-courses-preview data-server-paginated="true" data-confirm-url="{{confirm_mapping_url}}" data-mapping-configuration-id="{{mapping_configuration_id}}">
+<section class="mapping-preview-page" data-api-duration-page data-total-leads="{{api_duration_total_leads}}" data-duration-defaults="{{duration_defaults_attr_json}}" data-save-duration-url="{{save_duration_url}}" data-selected-colleges="{{selected_college_names_attr_json}}" data-region-assignments="{{region_assignments_attr_json}}" data-region-summary="{{region_summary_attr_json}}" data-leads-data="{{lead_rows_attr_json}}" data-api-duration-value="{{api_duration_selection_value}}">
     <section class="mapping-preview-summary">
         <article class="info-panel">
-            <p class="hero-label">Preview Filters</p>
-            <h3>Mapped Lead Snapshot</h3>
+            <p class="hero-label">Mapped Lead Snapshot</p>
+            <h3>Specialization Mapping Summary</h3>
             <div class="mapping-summary-list">
                 <div><span>Regions</span><strong>{{preview_selected_regions}}</strong></div>
                 <div><span>Courses</span><strong>{{preview_selected_courses}}</strong></div>
@@ -21,24 +22,47 @@
                 <div><span>Colleges</span><strong>{{preview_selected_colleges}}</strong></div>
                 <div><span>Total leads</span><strong>{{preview_total_records}}</strong></div>
             </div>
-            <p class="mapping-preview-message d-none" data-duration-message></p>
-            <div class="mapping-actions mapping-actions--card">
-                <button type="button" class="btn dashboard-logout" data-confirm-mapping>Confirm &amp; Assign</button>
-            </div>
         </article>
 
         <article class="info-panel">
-            <p class="hero-label">Next Step</p>
-            <h3>Assign Region Colleagues</h3>
-            <p>After confirmation, the workflow redirects to the Assign Region Colleagues page where you select colleagues for each region and then continue to API Duration.</p>
+            <p class="hero-label">API Duration</p>
+            <h3>API Duration Configuration</h3>
+            <p>Configure the batch size and API duration, then send the mapped leads to the API in batch format.</p>
             <div class="mapping-summary-list">
-                <div><span>Page URL</span><strong>{{mapping_api_url}}</strong></div>
-                <div><span>Assign colleagues</span><strong>Region wise</strong></div>
-                <div><span>Confirm assign</span><strong>Open API Duration</strong></div>
-                <div><span>Next</span><strong>Batch size and delay</strong></div>
+                <div><span>Total Leads</span><strong data-duration-total-leads>{{preview_total_records}}</strong></div>
+                <div><span>Assigned Colleagues</span><strong data-duration-selected-colleagues>0</strong></div>
+                <div><span>Selected Colleges</span><strong data-duration-selected-colleges>0</strong></div>
+                <div><span>Estimated Duration</span><strong data-duration-estimate>0 seconds</strong></div>
             </div>
+            <div class="mapping-chip-list" data-selected-college-list></div>
         </article>
     </section>
+
+    <article class="info-panel assignment-duration-panel">
+        <p class="hero-label">Send Leads</p>
+        <h3>API Duration Configuration</h3>
+        <div class="mapping-form-grid assignment-duration-grid">
+            <label class="form-label">
+                Batch Size
+                <input type="number" min="1" step="1" class="assignment-select" data-batch-size-input placeholder="50" value="50">
+                <small class="assignment-card__hint">Examples: 50, 100, 200</small>
+            </label>
+            <label class="form-label">
+                API Duration Selection
+                <select class="assignment-select" data-api-duration-selection>
+                    <option value="0.35">0.35</option>
+                    <option value="0.50">0.50</option>
+                    <option value="1 sec">1 sec</option>
+                </select>
+            </label>
+        </div>
+
+        <p class="mapping-preview-message d-none" data-api-duration-message></p>
+
+        <div class="mapping-actions mapping-actions--footer">
+            <button type="button" class="btn dashboard-logout" data-send-api-requests>Send Leads to API</button>
+        </div>
+    </article>
 
     <section class="region-groups region-groups--preview">{{preview_region_groups_html}}</section>
 

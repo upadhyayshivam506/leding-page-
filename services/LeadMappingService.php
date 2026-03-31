@@ -144,6 +144,10 @@ final class LeadMappingService
                 $catalog[$region] = [];
             }
 
+            if ($region === 'East') {
+                continue;
+            }
+
             $catalog[$region][] = [
                 'id' => (string) ($row['id'] ?? ''),
                 'name' => (string) ($row['college_name'] ?? $row['id'] ?? ''),

@@ -158,28 +158,69 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    var regionRoot = document.querySelector('[data-course-mapping-page]');
-    if (regionRoot) {
-        var rows = readJsonAttribute(regionRoot, 'data-region-rows');
-        var summary = readJsonAttribute(regionRoot, 'data-region-summary');
-        var openCourseMappingButton = regionRoot.querySelector('[data-open-course-mapping]');
-        var confirmRegionRedirectButton = regionRoot.querySelector('[data-confirm-region-redirect]');
-        var columns = readJsonAttribute(regionRoot, 'data-columns');
-        var colleges = readJsonAttribute(regionRoot, 'data-colleges');
+    var regionMappingRoot = document.querySelector('[data-region-mapping-page]');
+    if (regionMappingRoot) {
+        var regionRows = readJsonAttribute(regionMappingRoot, 'data-region-rows');
+        var regionSummary = readJsonAttribute(regionMappingRoot, 'data-region-summary');
+        var confirmRegionRedirectButton = regionMappingRoot.querySelector('[data-confirm-region-redirect]');
+        var regionHeaders = regionRows.length ? Object.keys(regionRows[0]) : defaultPreviewHeaders;
+        var regionGrouped = groupRowsByRegion(regionRows);
+
+        function renderRegionSummaryCards() {
+            var root = regionMappingRoot.querySelector('[data-region-summary-cards]');
+            if (!root) {
+                return;
+            }
+
+            root.innerHTML = regionOrder.map(function (region) {
+                var item = regionSummary.find(function (entry) {
+                    return entry.region === region;
+                }) || { total: 0 };
+
+                return '<article class="metric-card mapping-region-card"><div class="metric-card__header"><span>' + escapeHtml(region) + '</span><span class="panel-chip">Leads</span></div><h3>' + escapeHtml(item.total) + '</h3><p>Region-wise grouping of leads is ready for mapping.</p></article>';
+            }).join('');
+        }
+
+        function renderRegionPreviewGroups() {
+            var root = regionMappingRoot.querySelector('[data-region-groups]');
+            if (!root) {
+                return;
+            }
+
+            root.innerHTML = regionOrder.map(function (region) {
+                var previewRows = regionGrouped[region].slice(0, 8);
+                return '<article class="region-group-card"><div class="panel-head panel-head--table"><div><h3>' + escapeHtml(region) + '</h3><p class="table-subtext">First 8 leads shown for quick review on all devices.</p></div><span class="panel-chip">' + escapeHtml(regionGrouped[region].length) + ' leads</span></div>' + renderCompactTable(previewRows, regionHeaders, 'No leads in this region.') + '</article>';
+            }).join('');
+        }
+
+        renderRegionSummaryCards();
+        renderRegionPreviewGroups();
+
+        if (confirmRegionRedirectButton) {
+            confirmRegionRedirectButton.addEventListener('click', function () {
+                var target = regionMappingRoot.getAttribute('data-api-colleagues-url') || '/leads/mapping/region/api-colleagues';
+                var nextUrl = new URL(target, window.location.origin);
+                nextUrl.searchParams.set('region_summary_json', JSON.stringify(regionSummary));
+                window.location.href = nextUrl.toString();
+            });
+        }
+    }
+
+    var coursesMappingRoot = document.querySelector('[data-course-mapping-page]');
+    if (coursesMappingRoot) {
+        var rows = readJsonAttribute(coursesMappingRoot, 'data-region-rows');
+        var colleges = readJsonAttribute(coursesMappingRoot, 'data-colleges');
         var headers = rows.length ? Object.keys(rows[0]) : defaultPreviewHeaders;
         var grouped = groupRowsByRegion(rows);
-        var modal = document.querySelector('[data-course-mapping-modal]');
-        var closeModalButtons = document.querySelectorAll('[data-close-course-mapping]');
-        var regionPicker = modal ? modal.querySelector('[data-region-picker]') : null;
-        var selectedRegionSections = modal ? modal.querySelector('[data-selected-region-sections]') : null;
-        var columnSelect = modal ? modal.querySelector('[data-mapping-column]') : null;
-        var courseSelect = modal ? modal.querySelector('[data-course-values]') : null;
-        var specializationSelect = modal ? modal.querySelector('[data-specialization-select]') : null;
-        var collegeSelect = modal ? modal.querySelector('[data-college-select]') : null;
-        var courseChipList = modal ? modal.querySelector('[data-course-chip-list]') : null;
-        var collegeChipList = modal ? modal.querySelector('[data-college-chip-list]') : null;
-        var errorNode = modal ? modal.querySelector('[data-course-mapping-error]') : null;
-        var generateButton = modal ? modal.querySelector('[data-generate-preview]') : null;
+        var regionPicker = coursesMappingRoot.querySelector('[data-region-picker]');
+        var selectedRegionSections = coursesMappingRoot.querySelector('[data-selected-region-sections]');
+        var courseSelect = coursesMappingRoot.querySelector('[data-course-values]');
+        var specializationSelect = coursesMappingRoot.querySelector('[data-specialization-select]');
+        var collegeSelect = coursesMappingRoot.querySelector('[data-college-select]');
+        var courseChipList = coursesMappingRoot.querySelector('[data-course-chip-list]');
+        var collegeChipList = coursesMappingRoot.querySelector('[data-college-chip-list]');
+        var errorNode = coursesMappingRoot.querySelector('[data-course-mapping-error]');
+        var generateButton = coursesMappingRoot.querySelector('[data-generate-preview]');
         var selectedRegions = regionOrder.slice();
         var selectedCourses = [];
         var selectedSpecialization = '';
@@ -195,33 +236,6 @@ document.addEventListener('DOMContentLoaded', function () {
             return selectedRows().filter(function (row) {
                 return !selectedCourses.length || selectedCourses.indexOf(row.Course) !== -1;
             });
-        }
-
-        function renderSummaryCards() {
-            var root = regionRoot.querySelector('[data-region-summary-cards]');
-            if (!root) {
-                return;
-            }
-
-            root.innerHTML = regionOrder.map(function (region) {
-                var item = summary.find(function (entry) {
-                    return entry.region === region;
-                }) || { total: 0 };
-
-                return '<article class="metric-card mapping-region-card"><div class="metric-card__header"><span>' + escapeHtml(region) + '</span><span class="panel-chip">Leads</span></div><h3>' + escapeHtml(item.total) + '</h3><p>Region-wise grouping of leads is ready for mapping.</p></article>';
-            }).join('');
-        }
-
-        function renderRegionGroups() {
-            var root = regionRoot.querySelector('[data-region-groups]');
-            if (!root) {
-                return;
-            }
-
-            root.innerHTML = regionOrder.map(function (region) {
-                var previewRows = grouped[region].slice(0, 8);
-                return '<article class="region-group-card"><div class="panel-head panel-head--table"><div><h3>' + escapeHtml(region) + '</h3><p class="table-subtext">First 8 leads shown for quick review on all devices.</p></div><span class="panel-chip">' + escapeHtml(grouped[region].length) + ' leads</span></div>' + renderCompactTable(previewRows, headers, 'No leads in this region.') + '</article>';
-            }).join('');
         }
 
         function renderRegionPicker() {
@@ -256,16 +270,6 @@ document.addEventListener('DOMContentLoaded', function () {
             selectedRegionSections.innerHTML = selectedRegions.map(function (region) {
                 var previewRows = grouped[region].slice(0, 8);
                 return '<article class="mapping-selected-region-card"><div class="panel-head panel-head--table"><div><h3>' + escapeHtml(region) + ' Section</h3><p class="table-subtext">First 8 filtered rows for the selected region.</p></div><span class="panel-chip">' + escapeHtml(grouped[region].length) + ' leads</span></div>' + renderCompactTable(previewRows, headers, 'No leads in this region.') + '</article>';
-            }).join('');
-        }
-
-        function renderColumnOptions() {
-            if (!columnSelect) {
-                return;
-            }
-
-            columnSelect.innerHTML = (Array.isArray(columns) ? columns : []).map(function (column) {
-                return '<option value="' + escapeHtml(column) + '"' + (column === 'Course' ? ' selected' : '') + '>' + escapeHtml(column) + '</option>';
             }).join('');
         }
 
@@ -347,28 +351,9 @@ document.addEventListener('DOMContentLoaded', function () {
             updateSpecializationOptions();
         }
 
-        function setModalOpen(isOpen) {
-            if (!modal) {
-                return;
-            }
-
-            modal.classList.toggle('d-none', !isOpen);
-            document.body.classList.toggle('modal-is-open', isOpen);
-            if (errorNode) {
-                errorNode.classList.add('d-none');
-                errorNode.textContent = '';
-            }
-        }
-
-        renderSummaryCards();
-        renderRegionGroups();
-
-        if (modal) {
-            renderRegionPicker();
-            renderColumnOptions();
-            updateDependentFields();
-            updateCollegeOptions();
-        }
+        renderRegionPicker();
+        updateDependentFields();
+        updateCollegeOptions();
 
         if (courseSelect) {
             courseSelect.addEventListener('change', function () {
@@ -396,62 +381,300 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         }
 
-        if (openCourseMappingButton) {
-            openCourseMappingButton.addEventListener('click', function () {
-                setModalOpen(true);
-            });
-        }
-
-        if (confirmRegionRedirectButton) {
-            confirmRegionRedirectButton.addEventListener('click', function () {
-                window.location.href = regionRoot.getAttribute('data-api-colleagues-url') || '/leads/mapping/region/api-colleagues';
-            });
-        }
-
-        closeModalButtons.forEach(function (button) {
-            button.addEventListener('click', function () {
-                setModalOpen(false);
-            });
-        });
-
         if (generateButton) {
             generateButton.addEventListener('click', function () {
                 if (!selectedSpecialization) {
-                    errorNode.textContent = 'Select one specialization before generating preview.';
+                    errorNode.textContent = 'Select one specialization before confirming the mapping.';
                     errorNode.classList.remove('d-none');
                     return;
                 }
 
                 if (!selectedColleges.length) {
-                    errorNode.textContent = 'Select one or more colleges before generating preview.';
+                    errorNode.textContent = 'Select one or more colleges before confirming the mapping.';
                     errorNode.classList.remove('d-none');
                     return;
                 }
 
                 generateButton.disabled = true;
-                fetchJson(regionRoot.getAttribute('data-generate-preview-url'), {
+                fetchJson(coursesMappingRoot.getAttribute('data-generate-preview-url'), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        batch_id: regionRoot.getAttribute('data-batch-id') || '',
+                        batch_id: coursesMappingRoot.getAttribute('data-batch-id') || '',
                         regions: selectedRegions,
-                        column: columnSelect ? columnSelect.value : 'Course',
+                        column: 'Course',
                         course_values: selectedCourses,
                         specialization: selectedSpecialization,
                         college_ids: selectedColleges
                     })
                 }).then(function () {
-                    window.location.href = regionRoot.getAttribute('data-preview-page-url');
+                    window.location.href = coursesMappingRoot.getAttribute('data-preview-page-url');
                 }).catch(function (error) {
-                    errorNode.textContent = error.message || 'Unable to generate preview.';
+                    errorNode.textContent = error.message || 'Unable to confirm the mapping.';
                     errorNode.classList.remove('d-none');
                 }).finally(function () {
                     generateButton.disabled = false;
                 });
             });
         }
+    }
+
+    function normalizeAssignmentMap(assignments) {
+        var normalized = {};
+
+        regionOrder.forEach(function (region) {
+            normalized[region] = Array.isArray(assignments && assignments[region]) ? assignments[region].slice() : [];
+        });
+
+        return normalized;
+    }
+
+    function initApiDurationFlow(apiDurationRoot, options) {
+        if (!apiDurationRoot) {
+            return null;
+        }
+
+        if (apiDurationRoot._apiDurationFlow) {
+            return apiDurationRoot._apiDurationFlow;
+        }
+
+        options = options || {};
+
+        var durationDefaults = readJsonAttribute(apiDurationRoot, 'data-duration-defaults');
+        var selectedCollegeNames = readJsonAttribute(apiDurationRoot, 'data-selected-colleges');
+        var selectedAssignments = normalizeAssignmentMap(readJsonAttribute(apiDurationRoot, 'data-region-assignments'));
+        var regionSummaryData = readJsonAttribute(apiDurationRoot, 'data-region-summary');
+        var leadRows = readJsonAttribute(apiDurationRoot, 'data-leads-data');
+        var totalLeadCount = Number(apiDurationRoot.getAttribute('data-total-leads') || '0');
+        var batchInput = apiDurationRoot.querySelector('[data-batch-size-input]') || apiDurationRoot.querySelector('[data-batch-size]');
+        var apiDurationSelect = apiDurationRoot.querySelector('[data-api-duration-selection]');
+        var delayInput = apiDurationRoot.querySelector('[data-delay-seconds-input]') || apiDurationRoot.querySelector('[data-delay-size]') || apiDurationSelect;
+        var sendButton = apiDurationRoot.querySelector('[data-send-api-requests]') || apiDurationRoot.querySelector('[data-save-duration]');
+        var apiDurationMessage = apiDurationRoot.querySelector('[data-api-duration-message]');
+        var totalLeadsNode = apiDurationRoot.querySelector('[data-duration-total-leads]');
+        var selectedColleaguesNode = apiDurationRoot.querySelector('[data-duration-selected-colleagues]');
+        var selectedCollegesNode = apiDurationRoot.querySelector('[data-duration-selected-colleges]');
+        var batchSizeNode = apiDurationRoot.querySelector('[data-duration-batch-size]');
+        var delayNode = apiDurationRoot.querySelector('[data-duration-delay]');
+        var estimateNode = apiDurationRoot.querySelector('[data-duration-estimate]');
+        var selectedCollegeList = apiDurationRoot.querySelector('[data-selected-college-list]');
+        var colleagueCatalog = options.colleagueCatalog && typeof options.colleagueCatalog === 'object' ? options.colleagueCatalog : {};
+        var selectedDurationValue = apiDurationRoot.getAttribute('data-api-duration-value') || '';
+
+        function deriveSelectedCollegeNames(assignments) {
+            var names = [];
+
+            regionOrder.forEach(function (region) {
+                var regionCatalog = Array.isArray(colleagueCatalog[region]) ? colleagueCatalog[region] : [];
+                (Array.isArray(assignments[region]) ? assignments[region] : []).forEach(function (id) {
+                    var match = regionCatalog.find(function (college) {
+                        return college.id === id;
+                    });
+                    var label = match ? match.name : id;
+                    if (label && names.indexOf(label) === -1) {
+                        names.push(label);
+                    }
+                });
+            });
+
+            return names;
+        }
+
+        function selectedAssignmentCount() {
+            var unique = [];
+
+            regionOrder.forEach(function (region) {
+                (Array.isArray(selectedAssignments[region]) ? selectedAssignments[region] : []).forEach(function (id) {
+                    if (unique.indexOf(id) === -1) {
+                        unique.push(id);
+                    }
+                });
+            });
+
+            return unique.length;
+        }
+
+        function parseDurationValue(rawValue) {
+            var normalized = String(rawValue == null ? '' : rawValue).trim().toLowerCase().replace('sec', '').trim();
+            var value = Number(normalized);
+
+            return value >= 0 ? value : 0;
+        }
+
+        function readBatchSize() {
+            var value = Number(batchInput ? batchInput.value : 0);
+            if (!value && durationDefaults && durationDefaults.batch_size) {
+                value = Number(durationDefaults.batch_size);
+            }
+
+            return value > 0 ? value : 0;
+        }
+
+        function readDelaySeconds() {
+            var value = parseDurationValue(delayInput ? delayInput.value : 0);
+            if (!value && value !== 0 && durationDefaults && durationDefaults.delay !== undefined) {
+                value = parseDurationValue(durationDefaults.delay);
+            }
+
+            return value >= 0 ? value : 0;
+        }
+
+        function setApiMessage(message, isError) {
+            if (!apiDurationMessage) {
+                return;
+            }
+
+            apiDurationMessage.textContent = message;
+            apiDurationMessage.classList.remove('d-none');
+            apiDurationMessage.classList.toggle('mapping-preview-message--error', !!isError);
+            apiDurationMessage.classList.toggle('mapping-preview-message--success', !isError);
+        }
+
+        function updateDurationSummary() {
+            var totalLeads = Array.isArray(leadRows) && leadRows.length ? leadRows.length : totalLeadCount;
+            var batchSize = readBatchSize();
+            var delay = readDelaySeconds();
+            var batches = batchSize > 0 ? Math.ceil(totalLeads / batchSize) : 0;
+            var estimated = Math.max(0, batches - 1) * Math.max(0, delay);
+
+            if (totalLeadsNode) {
+                totalLeadsNode.textContent = String(totalLeads);
+            }
+            if (selectedColleaguesNode) {
+                selectedColleaguesNode.textContent = String(selectedAssignmentCount());
+            }
+            if (selectedCollegesNode) {
+                selectedCollegesNode.textContent = String(Array.isArray(selectedCollegeNames) ? selectedCollegeNames.length : 0);
+            }
+            if (batchSizeNode) {
+                batchSizeNode.textContent = batchSize > 0 ? String(batchSize) : '0';
+            }
+            if (delayNode) {
+                delayNode.textContent = delay.toFixed(2) + ' seconds';
+            }
+            if (estimateNode) {
+                estimateNode.textContent = estimated.toFixed(2) + ' seconds';
+            }
+
+            renderChipList(selectedCollegeList, Array.isArray(selectedCollegeNames) ? selectedCollegeNames : [], 'No colleges selected yet.');
+        }
+
+        function setState(nextState) {
+            nextState = nextState || {};
+
+            if (nextState.assignments) {
+                selectedAssignments = normalizeAssignmentMap(nextState.assignments);
+            }
+            if (Array.isArray(nextState.regionSummary)) {
+                regionSummaryData = nextState.regionSummary.slice();
+            }
+            if (Array.isArray(nextState.leadRows)) {
+                leadRows = nextState.leadRows.slice();
+                totalLeadCount = leadRows.length;
+            }
+            if (Array.isArray(nextState.selectedCollegeNames)) {
+                selectedCollegeNames = nextState.selectedCollegeNames.slice();
+            } else if (!Array.isArray(selectedCollegeNames) || !selectedCollegeNames.length) {
+                selectedCollegeNames = deriveSelectedCollegeNames(selectedAssignments);
+            }
+
+            updateDurationSummary();
+        }
+
+        function show() {
+            toggleNode(apiDurationRoot, true);
+            updateDurationSummary();
+        }
+
+        function hide() {
+            toggleNode(apiDurationRoot, false);
+        }
+
+        if ((!Array.isArray(selectedCollegeNames) || !selectedCollegeNames.length) && Object.keys(colleagueCatalog).length) {
+            selectedCollegeNames = deriveSelectedCollegeNames(selectedAssignments);
+        }
+
+        if (durationDefaults && typeof durationDefaults === 'object') {
+            if (batchInput && durationDefaults.batch_size) {
+                batchInput.value = batchInput.value || String(durationDefaults.batch_size);
+            }
+            if (delayInput && delayInput !== apiDurationSelect && durationDefaults.delay !== undefined) {
+                delayInput.value = delayInput.value || String(durationDefaults.delay);
+            }
+        }
+
+        if (apiDurationSelect) {
+            apiDurationSelect.value = selectedDurationValue || (durationDefaults && durationDefaults.api_duration ? String(durationDefaults.api_duration) : '0.35');
+        }
+
+        updateDurationSummary();
+
+        if (batchInput) {
+            batchInput.addEventListener('input', updateDurationSummary);
+        }
+        if (delayInput) {
+            delayInput.addEventListener('input', updateDurationSummary);
+        }
+
+        if (sendButton) {
+            sendButton.addEventListener('click', function () {
+                var batchSize = readBatchSize();
+                var delay = readDelaySeconds();
+                var apiDurationValue = apiDurationSelect ? apiDurationSelect.value : '0.35';
+
+                if (batchSize <= 0) {
+                    setApiMessage('Batch size must be greater than zero.', true);
+                    return;
+                }
+
+                if (delay < 0) {
+                    setApiMessage('Delay between batches cannot be negative.', true);
+                    return;
+                }
+
+                sendButton.disabled = true;
+                setApiMessage('Sending API requests in the configured batch flow...', false);
+
+                fetchJson(apiDurationRoot.getAttribute('data-save-duration-url'), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        batch_size: batchSize,
+                        delay: delay,
+                        delay_duration: delay,
+                        api_duration_selection: apiDurationValue,
+                        assignments: selectedAssignments,
+                        assigned_colleagues: selectedAssignments,
+                        leads_data: Array.isArray(leadRows) ? leadRows : [],
+                        region_data: Array.isArray(regionSummaryData) ? regionSummaryData : []
+                    })
+                }).then(function (payload) {
+                    var successMessage = payload.data && payload.data.confirmation ? payload.data.confirmation : 'Duration settings saved successfully.';
+                    var redirectMessage = payload.data && payload.data.message ? payload.data.message : 'API requests are being processed in the background.';
+                    setApiMessage(successMessage + ' ' + redirectMessage, false);
+                    setTimeout(function () {
+                        window.location.href = payload.data && payload.data.redirect ? payload.data.redirect : '/leads';
+                    }, 400);
+                }).catch(function (error) {
+                    sendButton.disabled = false;
+                    setApiMessage(error.message || 'Unable to save duration settings.', true);
+                });
+            });
+        }
+
+        apiDurationRoot._apiDurationFlow = {
+            root: apiDurationRoot,
+            show: show,
+            hide: hide,
+            setState: setState,
+            setMessage: setApiMessage
+        };
+
+        return apiDurationRoot._apiDurationFlow;
     }
 
     var previewRoot = document.querySelector('[data-mapping-courses-preview]');
@@ -498,22 +721,21 @@ document.addEventListener('DOMContentLoaded', function () {
     if (regionColleaguesRoot) {
         var regionSummary = readJsonAttribute(regionColleaguesRoot, 'data-region-summary');
         var colleagueCatalog = readJsonAttribute(regionColleaguesRoot, 'data-colleague-catalog');
-        var existingAssignments = readJsonAttribute(regionColleaguesRoot, 'data-region-assignments');
+        var existingAssignments = normalizeAssignmentMap(readJsonAttribute(regionColleaguesRoot, 'data-region-assignments'));
         var assignmentGrid = regionColleaguesRoot.querySelector('[data-assignment-grid]');
         var summaryBody = regionColleaguesRoot.querySelector('[data-region-summary-body]');
         var confirmAssignButton = regionColleaguesRoot.querySelector('[data-confirm-assign]');
         var assignMessage = regionColleaguesRoot.querySelector('[data-assign-message]');
-        var assignments = {};
+        var assignments = normalizeAssignmentMap(existingAssignments);
         var summaryLookup = {};
+        var apiDurationFlow = initApiDurationFlow(regionColleaguesRoot.querySelector('[data-api-duration-page]'), {
+            colleagueCatalog: colleagueCatalog
+        });
 
         (Array.isArray(regionSummary) ? regionSummary : []).forEach(function (entry) {
             if (entry && entry.region) {
                 summaryLookup[entry.region] = Number(entry.total || 0);
             }
-        });
-
-        regionOrder.forEach(function (region) {
-            assignments[region] = existingAssignments && existingAssignments[region] ? existingAssignments[region] : [];
         });
 
         function catalogForRegion(region) {
@@ -533,10 +755,28 @@ document.addEventListener('DOMContentLoaded', function () {
             summaryBody.innerHTML = regionOrder.map(function (region) {
                 var entry = regionSummary.find(function (item) {
                     return item.region === region;
-                }) || { total: (regionGrouped[region] || []).length };
+                }) || { total: Number(summaryLookup[region] || 0) };
 
                 return '<tr><td>' + escapeHtml(region) + '</td><td>' + escapeHtml(entry.total) + '</td></tr>';
             }).join('');
+        }
+
+        function selectedCollegeNamesForAssignments() {
+            var names = [];
+
+            regionOrder.forEach(function (region) {
+                (Array.isArray(assignments[region]) ? assignments[region] : []).forEach(function (id) {
+                    var match = catalogForRegion(region).find(function (college) {
+                        return college.id === id;
+                    });
+                    var label = match ? match.name : id;
+                    if (label && names.indexOf(label) === -1) {
+                        names.push(label);
+                    }
+                });
+            });
+
+            return names;
         }
 
         function renderRegionChips(region) {
@@ -550,7 +790,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     return college.id === id;
                 });
                 return match ? match.name : id;
-            }), 'No colleagues selected.');
+            }), catalogForRegion(region).length ? 'No colleagues selected.' : 'None');
         }
 
         function renderAssignments() {
@@ -564,13 +804,17 @@ document.addEventListener('DOMContentLoaded', function () {
                 var copy = leadCount > 0
                     ? String(leadCount) + ' leads ready for assignment'
                     : 'No leads ready for assignment';
+                var hasOptions = options.length > 0;
+                var hint = hasOptions
+                    ? String(options.length) + ' colleagues available for this region.'
+                    : 'No colleagues are configured for this region. Leads from this region will not be passed.';
 
-                return '<article class="info-panel assignment-card"><p class="hero-label">' + escapeHtml(region) + '</p><h3>' + escapeHtml(region) + ' Region</h3><p>' + escapeHtml(copy) + '</p><label class="form-label">Select Colleagues<select class="assignment-select" data-region-assignment="' + escapeHtml(region) + '" multiple>' + options.map(function (college) {
+                return '<article class="info-panel assignment-card" data-region-card="' + escapeHtml(region) + '"><p class="hero-label">' + escapeHtml(region) + '</p><h3>' + escapeHtml(region) + ' Region</h3><p>' + escapeHtml(copy) + '</p><p class="assignment-card__hint">' + escapeHtml(hint) + '</p><label class="form-label">Select Colleagues<select class="assignment-select" data-region-assignment="' + escapeHtml(region) + '" multiple' + (hasOptions ? '' : ' disabled') + '>' + (hasOptions ? options.map(function (college) {
                     var value = college.id || '';
                     var label = college.name || value;
                     var selected = assignments[region].indexOf(value) !== -1 ? ' selected' : '';
                     return '<option value="' + escapeHtml(value) + '"' + selected + '>' + escapeHtml(label) + '</option>';
-                }).join('') + '</select></label><div class="mapping-chip-list" data-region-chip-list="' + escapeHtml(region) + '"></div></article>';
+                }).join('') : '<option value=\"\" disabled selected>None</option>') + '</select></label><p class="assignment-card__error d-none" data-region-error="' + escapeHtml(region) + '">Select at least one colleague for this region before continuing.</p><div class="mapping-chip-list" data-region-chip-list="' + escapeHtml(region) + '"></div></article>';
             }).join('');
 
             assignmentGrid.querySelectorAll('[data-region-assignment]').forEach(function (select) {
@@ -578,8 +822,55 @@ document.addEventListener('DOMContentLoaded', function () {
                     var region = select.getAttribute('data-region-assignment') || '';
                     assignments[region] = selectValues(select);
                     renderRegionChips(region);
+                    refreshRegionValidation();
+                    if (apiDurationFlow && !apiDurationFlow.root.classList.contains('d-none')) {
+                        apiDurationFlow.hide();
+                        apiDurationFlow.setState({
+                            assignments: assignments,
+                            selectedCollegeNames: selectedCollegeNamesForAssignments()
+                        });
+                        setAssignMessage('Assignment selections changed. Confirm & Assign again to continue with API requests.', false);
+                    }
                 });
             });
+        }
+
+        function refreshRegionValidation() {
+            if (!assignmentGrid) {
+                return;
+            }
+
+            regionOrder.forEach(function (region) {
+                var card = assignmentGrid.querySelector('[data-region-card="' + region + '"]');
+                var error = assignmentGrid.querySelector('[data-region-error="' + region + '"]');
+                var shouldShowError = Number(summaryLookup[region] || 0) > 0
+                    && catalogForRegion(region).length > 0
+                    && (!Array.isArray(assignments[region]) || !assignments[region].length);
+
+                if (card) {
+                    card.classList.toggle('assignment-card--error', shouldShowError);
+                }
+                if (error) {
+                    error.classList.toggle('d-none', !shouldShowError);
+                }
+            });
+        }
+
+        function firstInvalidRegion() {
+            var invalidRegion = '';
+
+            regionOrder.some(function (region) {
+                if (Number(summaryLookup[region] || 0) > 0
+                    && catalogForRegion(region).length > 0
+                    && (!Array.isArray(assignments[region]) || !assignments[region].length)) {
+                    invalidRegion = region;
+                    return true;
+                }
+
+                return false;
+            });
+
+            return invalidRegion;
         }
 
         function setAssignMessage(message, isError) {
@@ -596,10 +887,26 @@ document.addEventListener('DOMContentLoaded', function () {
         renderSummaryTable();
         renderAssignments();
         regionOrder.forEach(renderRegionChips);
+        refreshRegionValidation();
+
+        if (apiDurationFlow) {
+            apiDurationFlow.setState({
+                assignments: assignments,
+                selectedCollegeNames: selectedCollegeNamesForAssignments()
+            });
+        }
 
         if (confirmAssignButton) {
             confirmAssignButton.addEventListener('click', function () {
+                var invalidRegion = firstInvalidRegion();
+                if (invalidRegion) {
+                    refreshRegionValidation();
+                    setAssignMessage('Select at least one colleague for the ' + invalidRegion + ' region before continuing.', true);
+                    return;
+                }
+
                 confirmAssignButton.disabled = true;
+                setAssignMessage('Saving region-wise colleague assignments...', false);
                 fetchJson(regionColleaguesRoot.getAttribute('data-confirm-assign-url'), {
                     method: 'POST',
                     headers: {
@@ -609,12 +916,20 @@ document.addEventListener('DOMContentLoaded', function () {
                         assignments: assignments
                     })
                 }).then(function (payload) {
-                    setAssignMessage('Assignments confirmed. Opening API Duration page.', false);
-                    setTimeout(function () {
-                        window.location.href = payload.data && payload.data.redirect
-                            ? payload.data.redirect
-                            : (regionColleaguesRoot.getAttribute('data-api-duration-page-url') || '/leads/mapping/api-duration');
-                    }, 300);
+                    confirmAssignButton.disabled = false;
+                    setAssignMessage(payload.data && payload.data.message ? payload.data.message : 'Assignments confirmed. API Duration configuration is ready below.', false);
+
+                    if (apiDurationFlow) {
+                        apiDurationFlow.setState({
+                            assignments: assignments,
+                            selectedCollegeNames: selectedCollegeNamesForAssignments()
+                        });
+                        apiDurationFlow.show();
+                        apiDurationFlow.root.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'start'
+                        });
+                    }
                 }).catch(function (error) {
                     confirmAssignButton.disabled = false;
                     setAssignMessage(error.message || 'Unable to confirm assignments.', true);
@@ -623,144 +938,18 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    var apiDurationRoot = document.querySelector('[data-api-duration-page]');
-    if (apiDurationRoot) {
-        var totalLeadCount = Number(apiDurationRoot.getAttribute('data-total-leads') || '0');
-        var durationDefaults = readJsonAttribute(apiDurationRoot, 'data-duration-defaults');
-        var selectedCollegeNames = readJsonAttribute(apiDurationRoot, 'data-selected-colleges');
-        var selectedAssignments = readJsonAttribute(apiDurationRoot, 'data-region-assignments');
-        var batchSelect = apiDurationRoot.querySelector('[data-batch-size]');
-        var delaySelect = apiDurationRoot.querySelector('[data-delay-size]');
-        var customBatchWrap = apiDurationRoot.querySelector('[data-custom-batch-wrap]');
-        var customDelayWrap = apiDurationRoot.querySelector('[data-custom-delay-wrap]');
-        var customBatchInput = apiDurationRoot.querySelector('[data-custom-batch-size]');
-        var customDelayInput = apiDurationRoot.querySelector('[data-custom-delay-size]');
-        var saveDurationButton = apiDurationRoot.querySelector('[data-save-duration]');
-        var apiDurationMessage = apiDurationRoot.querySelector('[data-api-duration-message]');
-        var totalLeadsNode = apiDurationRoot.querySelector('[data-duration-total-leads]');
-        var selectedColleaguesNode = apiDurationRoot.querySelector('[data-duration-selected-colleagues]');
-        var selectedCollegesNode = apiDurationRoot.querySelector('[data-duration-selected-colleges]');
-        var batchSizeNode = apiDurationRoot.querySelector('[data-duration-batch-size]');
-        var delayNode = apiDurationRoot.querySelector('[data-duration-delay]');
-        var estimateNode = apiDurationRoot.querySelector('[data-duration-estimate]');
-        var selectedCollegeList = apiDurationRoot.querySelector('[data-selected-college-list]');
-
-        function selectedAssignmentCount() {
-            var total = 0;
-
-            regionOrder.forEach(function (region) {
-                total += Array.isArray(selectedAssignments && selectedAssignments[region]) ? selectedAssignments[region].length : 0;
-            });
-
-            return total;
-        }
-
-        function setApiMessage(message, isError) {
-            if (!apiDurationMessage) {
-                return;
-            }
-
-            apiDurationMessage.textContent = message;
-            apiDurationMessage.classList.remove('d-none');
-            apiDurationMessage.classList.toggle('mapping-preview-message--error', !!isError);
-            apiDurationMessage.classList.toggle('mapping-preview-message--success', !isError);
-        }
-
-        function updateDurationSummary() {
-            var totalLeads = totalLeadCount;
-            var batchSize = batchSelect && batchSelect.value === 'custom' ? Number(customBatchInput && customBatchInput.value ? customBatchInput.value : 0) : Number(batchSelect ? batchSelect.value : 50);
-            var delay = delaySelect && delaySelect.value === 'custom' ? Number(customDelayInput && customDelayInput.value ? customDelayInput.value : 0) : Number(delaySelect ? delaySelect.value : 0.2);
-            var batches = batchSize > 0 ? Math.ceil(totalLeads / batchSize) : 0;
-            var estimated = Math.max(0, batches - 1) * Math.max(0, delay);
-
-            if (totalLeadsNode) {
-                totalLeadsNode.textContent = String(totalLeads);
-            }
-            if (selectedColleaguesNode) {
-                selectedColleaguesNode.textContent = String(selectedAssignmentCount());
-            }
-            if (selectedCollegesNode) {
-                selectedCollegesNode.textContent = String(Array.isArray(selectedCollegeNames) ? selectedCollegeNames.length : 0);
-            }
-            if (batchSizeNode) {
-                batchSizeNode.textContent = batchSize > 0 ? String(batchSize) : '0';
-            }
-            if (delayNode) {
-                delayNode.textContent = delay.toFixed(2) + ' seconds';
-            }
-            if (estimateNode) {
-                estimateNode.textContent = estimated.toFixed(2) + ' seconds';
-            }
-        }
-
-        function syncCustomFields() {
-            toggleNode(customBatchWrap, batchSelect && batchSelect.value === 'custom');
-            toggleNode(customDelayWrap, delaySelect && delaySelect.value === 'custom');
-            updateDurationSummary();
-        }
-
-        if (durationDefaults && typeof durationDefaults === 'object') {
-            if (batchSelect && durationDefaults.batch_size) {
-                batchSelect.value = String(durationDefaults.batch_size);
-            }
-            if (delaySelect && durationDefaults.delay !== undefined) {
-                delaySelect.value = String(durationDefaults.delay);
-            }
-        }
-
-        renderChipList(selectedCollegeList, Array.isArray(selectedCollegeNames) ? selectedCollegeNames : [], 'No colleges selected yet.');
-        updateDurationSummary();
-        syncCustomFields();
-
-        if (batchSelect) {
-            batchSelect.addEventListener('change', syncCustomFields);
-        }
-        if (delaySelect) {
-            delaySelect.addEventListener('change', syncCustomFields);
-        }
-        if (customBatchInput) {
-            customBatchInput.addEventListener('input', updateDurationSummary);
-        }
-        if (customDelayInput) {
-            customDelayInput.addEventListener('input', updateDurationSummary);
-        }
-
-        if (saveDurationButton) {
-            saveDurationButton.addEventListener('click', function () {
-                saveDurationButton.disabled = true;
-                setApiMessage('Saving duration settings and preparing background sending...', false);
-
-                fetchJson(apiDurationRoot.getAttribute('data-save-duration-url'), {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        batch_size: batchSelect ? batchSelect.value : '50',
-                        custom_batch_size: customBatchInput ? customBatchInput.value : '',
-                        delay: delaySelect ? delaySelect.value : '0.2',
-                        custom_delay: customDelayInput ? customDelayInput.value : ''
-                    })
-                }).then(function (payload) {
-                    var successMessage = payload.data && payload.data.confirmation ? payload.data.confirmation : 'Duration settings saved successfully.';
-                    var redirectMessage = payload.data && payload.data.message ? payload.data.message : 'Sending leads in background. Redirecting to leads page.';
-                    setApiMessage(successMessage + ' ' + redirectMessage, false);
-                    setTimeout(function () {
-                        window.location.href = payload.data && payload.data.redirect ? payload.data.redirect : '/leads';
-                    }, 400);
-                }).catch(function (error) {
-                    saveDurationButton.disabled = false;
-                    setApiMessage(error.message || 'Unable to save duration settings.', true);
-                });
-            });
-        }
-    }
+    document.querySelectorAll('[data-api-duration-page]').forEach(function (root) {
+        initApiDurationFlow(root);
+    });
 
     document.querySelectorAll('[data-stepper]').forEach(function (stepper) {
         var currentStep = stepper.getAttribute('data-current-step');
-        var order = ['preview', 'region', 'assign', 'api-duration'];
-        var currentIndex = order.indexOf(currentStep);
-        stepper.querySelectorAll('.mapping-step').forEach(function (step, index) {
+        var steps = Array.from(stepper.querySelectorAll('.mapping-step'));
+        var currentIndex = steps.findIndex(function (step) {
+            return step.getAttribute('data-step-id') === currentStep;
+        });
+
+        steps.forEach(function (step, index) {
             if (index < currentIndex) {
                 step.classList.add('is-complete');
             }

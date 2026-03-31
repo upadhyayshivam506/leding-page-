@@ -1,0 +1,108 @@
+<section class="page-heading">
+    <p class="hero-label">{{page_kicker}}</p>
+    <h2>{{page_title}}</h2>
+</section>
+
+<section class="mapping-stepper" data-stepper data-current-step="{{mapping_step}}">
+    <div class="mapping-step" data-step-id="upload"><span>1</span><strong>Upload</strong></div>
+    <div class="mapping-step" data-step-id="region"><span>2</span><strong>Region</strong></div>
+    <div class="mapping-step" data-step-id="specialization-mapping"><span>3</span><strong>Specialization Mapping</strong></div>
+    <div class="mapping-step" data-step-id="api-duration"><span>4</span><strong>API Duration</strong></div>
+</section>
+
+<section class="mapping-course-page" data-course-mapping-page data-region-rows="{{region_rows_attr_json}}" data-region-summary="{{region_summary_attr_json}}" data-colleges="{{colleges_catalog_attr_json}}" data-generate-preview-url="{{generate_preview_url}}" data-preview-page-url="{{preview_page_url}}" data-batch-id="{{uploaded_batch_id}}">
+    <section class="mapping-preview-summary mapping-course-page__summary">
+        <article class="info-panel mapping-course-page__summary-card">
+            <p class="hero-label">Current Batch</p>
+            <h3>{{uploaded_file_name}}</h3>
+            <p>Build a specialization preview from the same uploaded batch without leaving the mapping workflow.</p>
+            <div class="mapping-summary-list">
+                <div><span>Step</span><strong>Specialization Mapping</strong></div>
+                <div><span>Regions available</span><strong>North, South, East, West / Others</strong></div>
+                <div><span>Next</span><strong>API Duration Configuration</strong></div>
+            </div>
+        </article>
+
+        <article class="info-panel mapping-course-page__summary-card">
+            <p class="hero-label">Confirmation Flow</p>
+            <h3>Confirm Mapping</h3>
+            <p>Choose detected course values, specialization, and colleges, then confirm the mapping to continue to API Duration.</p>
+            <div class="mapping-summary-list">
+                <div><span>1</span><strong>Select regions</strong></div>
+                <div><span>2</span><strong>Choose detected courses</strong></div>
+                <div><span>3</span><strong>Pick specialization</strong></div>
+                <div><span>4</span><strong>Confirm mapping</strong></div>
+            </div>
+        </article>
+    </section>
+
+    <section class="mapping-course-page__body">
+        <section class="mapping-modal-step mapping-course-page__step">
+            <div class="mapping-modal-step__head">
+                <span>1</span>
+                <div>
+                    <h4>Select Region</h4>
+                    <p>Select one region or multiple regions from North, South, East, and West / Others.</p>
+                </div>
+            </div>
+            <div class="mapping-region-picker" data-region-picker></div>
+            <div class="mapping-selected-regions" data-selected-region-sections></div>
+        </section>
+
+        <section class="mapping-modal-step mapping-course-page__step">
+            <div class="mapping-modal-step__head">
+                <span>2</span>
+                <div>
+                    <h4>Detected Course Values</h4>
+                    <p>The mapping source is fixed to the detected Course values from the uploaded leads.</p>
+                </div>
+            </div>
+            <div class="mapping-static-field">
+                <span>Mapping Source</span>
+                <strong>Course</strong>
+            </div>
+            <label class="form-label">
+                Course Values
+                <select class="assignment-select" data-course-values multiple></select>
+            </label>
+            <div class="mapping-chip-list" data-course-chip-list></div>
+        </section>
+
+        <section class="mapping-modal-step mapping-course-page__step">
+            <div class="mapping-modal-step__head">
+                <span>3</span>
+                <div>
+                    <h4>Select Specialization</h4>
+                    <p>Read specialization values, group leads by specialization, and filter the mapping data using one specialization.</p>
+                </div>
+            </div>
+            <label class="form-label">
+                Specialization
+                <select class="assignment-select" data-specialization-select></select>
+            </label>
+        </section>
+
+        <section class="mapping-modal-step mapping-course-page__step">
+            <div class="mapping-modal-step__head">
+                <span>4</span>
+                <div>
+                    <h4>Select Colleges</h4>
+                    <p>Select one or more colleges that should receive the mapped leads after preview confirmation.</p>
+                </div>
+            </div>
+            <label class="form-label">
+                Colleges
+                <select class="assignment-select" data-college-select multiple></select>
+            </label>
+            <div class="mapping-chip-list" data-college-chip-list></div>
+        </section>
+    </section>
+
+    <div class="mapping-actions mapping-actions--footer mapping-course-page__actions">
+        <p class="mapping-modal__message d-none mapping-course-page__message" data-course-mapping-error></p>
+        <div class="mapping-course-page__action-row">
+            <a href="{{mapping_region_url}}" class="panel-link topbar-action-link">Back to Region Mapping</a>
+            <button type="button" class="btn dashboard-logout" data-generate-preview>Confirm Mapping</button>
+        </div>
+    </div>
+</section>

@@ -4,16 +4,16 @@
 </section>
 
 <section class="mapping-stepper" data-stepper data-current-step="{{mapping_step}}">
-    <div class="mapping-step"><span>1</span><strong>Upload</strong></div>
-    <div class="mapping-step"><span>2</span><strong>Region</strong></div>
-    <div class="mapping-step"><span>3</span><strong>Preview</strong></div>
+    <div class="mapping-step" data-step-id="upload"><span>1</span><strong>Upload</strong></div>
+    <div class="mapping-step" data-step-id="region"><span>2</span><strong>Region</strong></div>
+    <div class="mapping-step" data-step-id="assign"><span>3</span><strong>Assign</strong></div>
+    <div class="mapping-step" data-step-id="api-duration"><span>4</span><strong>API Duration</strong></div>
 </section>
 
-<section class="mapping-region-page" data-course-mapping-page data-api-colleagues-url="{{mapping_api_url}}" data-region-rows="{{region_rows_attr_json}}" data-region-summary="{{region_summary_attr_json}}" data-columns="{{available_columns_attr_json}}" data-colleges="{{colleges_catalog_attr_json}}" data-duration-defaults="{{duration_defaults_attr_json}}" data-generate-preview-url="{{generate_preview_url}}" data-preview-page-url="{{preview_page_url}}" data-batch-id="{{uploaded_batch_id}}">
+<section class="mapping-region-page" data-region-mapping-page data-api-colleagues-url="{{mapping_api_url}}" data-region-rows="{{region_rows_attr_json}}" data-region-summary="{{region_summary_attr_json}}">
     <article class="table-panel mapping-table-panel">
         <div class="panel-head panel-head--table">
             <div>
-                <h3>Region Mapping Table</h3>
                 <p class="table-subtext">This page now uses the same paginated table pattern as Leads, Preview, and Logs.</p>
             </div>
             <span class="panel-chip">{{main_table_count_label}}</span>
@@ -28,96 +28,13 @@
     </article>
 
     <div class="mapping-actions mapping-actions--footer">
-        <button type="button" class="btn dashboard-logout" data-open-course-mapping>Courses Mapping</button>
+        <a href="{{mapping_region_courses_url}}" class="btn dashboard-logout">Specialization Courses Mapping</a>
     </div>
 
     <div class="mapping-region-summary" data-region-summary-cards></div>
     <section class="region-groups" data-region-groups></section>
 
     <div class="mapping-actions mapping-actions--footer">
-        <button type="button" class="btn dashboard-logout" data-confirm-region-redirect>Confirm Assign</button>
+        <button type="button" class="btn dashboard-logout" data-confirm-region-redirect>Continue to Assign Colleagues</button>
     </div>
 </section>
-
-<div class="mapping-modal d-none" data-course-mapping-modal>
-    <div class="mapping-modal__backdrop" data-close-course-mapping></div>
-    <div class="mapping-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="course-mapping-title">
-        <div class="mapping-modal__header">
-            <div>
-                <p class="hero-label">Courses Mapping Workflow</p>
-                <h3 id="course-mapping-title">Select region data and generate preview</h3>
-            </div>
-            <button type="button" class="mapping-modal__close" data-close-course-mapping aria-label="Close">&times;</button>
-        </div>
-
-        <div class="mapping-modal__body">
-            <section class="mapping-modal-step">
-                <div class="mapping-modal-step__head">
-                    <span>1</span>
-                    <div>
-                        <h4>Select Region</h4>
-                        <p>Select one region or multiple regions from North, South, East, and West / Others.</p>
-                    </div>
-                </div>
-                <div class="mapping-region-picker" data-region-picker></div>
-                <div class="mapping-selected-regions" data-selected-region-sections></div>
-            </section>
-
-            <section class="mapping-modal-step">
-                <div class="mapping-modal-step__head">
-                    <span>2</span>
-                    <div>
-                        <h4>Select Column for Mapping</h4>
-                        <p>Choose a column, default it to Course, then review all unique course values for the selected region data.</p>
-                    </div>
-                </div>
-                <div class="mapping-form-grid">
-                    <label class="form-label">
-                        Column
-                        <select class="assignment-select" data-mapping-column></select>
-                    </label>
-                    <label class="form-label">
-                        Course Values
-                        <select class="assignment-select" data-course-values multiple></select>
-                    </label>
-                </div>
-                <div class="mapping-chip-list" data-course-chip-list></div>
-            </section>
-
-            <section class="mapping-modal-step">
-                <div class="mapping-modal-step__head">
-                    <span>3</span>
-                    <div>
-                        <h4>Select Specialization</h4>
-                        <p>Read specialization values, group leads by specialization, and filter the mapping data using one specialization.</p>
-                    </div>
-                </div>
-                <label class="form-label">
-                    Specialization
-                    <select class="assignment-select" data-specialization-select></select>
-                </label>
-            </section>
-
-            <section class="mapping-modal-step">
-                <div class="mapping-modal-step__head">
-                    <span>4</span>
-                    <div>
-                        <h4>Select Colleges</h4>
-                        <p>Select one or more colleges that should receive the mapped leads after preview confirmation.</p>
-                    </div>
-                </div>
-                <label class="form-label">
-                    Colleges
-                    <select class="assignment-select" data-college-select multiple></select>
-                </label>
-                <div class="mapping-chip-list" data-college-chip-list></div>
-            </section>
-        </div>
-
-        <div class="mapping-modal__footer">
-            <p class="mapping-modal__message d-none" data-course-mapping-error></p>
-            <button type="button" class="panel-link topbar-action-link" data-close-course-mapping>Cancel</button>
-            <button type="button" class="btn dashboard-logout" data-generate-preview>Generate Preview</button>
-        </div>
-    </div>
-</div>

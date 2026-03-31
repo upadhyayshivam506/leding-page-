@@ -16,6 +16,7 @@ return [
     'POST /leads/upload' => [DashboardController::class, 'uploadLeadFile'],
     'GET /leads/mapping' => [DashboardController::class, 'mapping'],
     'GET /leads/mapping/region' => [DashboardController::class, 'mappingRegion'],
+    'GET /leads/mapping/region/courses-mapping' => [DashboardController::class, 'mappingRegionCoursesMapping'],
     'POST /leads/mapping/generate-preview.php' => [DashboardController::class, 'generateCourseMappingPreview'],
     'POST /leads/mapping/confirm-mapping.php' => [DashboardController::class, 'confirmCourseMapping'],
     'GET /leads/mapping/mapping-courses-specialization' => [DashboardController::class, 'mappingCoursesSpecialization'],
