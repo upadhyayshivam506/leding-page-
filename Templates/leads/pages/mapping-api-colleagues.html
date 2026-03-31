@@ -10,10 +10,27 @@
     <div class="mapping-step"><span>4</span><strong>API Duration</strong></div>
 </section>
 
-<section class="assignment-page" data-region-colleagues-page data-region-summary="{{region_summary_attr_json}}" data-region-rows="{{region_rows_attr_json}}" data-colleague-catalog="{{colleague_catalog_attr_json}}" data-confirm-assign-url="{{confirm_assign_url}}" data-api-duration-page-url="{{mapping_api_duration_url}}" data-region-assignments="{{region_assignments_attr_json}}">
+<section class="assignment-page" data-region-colleagues-page data-region-summary="{{region_summary_attr_json}}" data-colleague-catalog="{{colleague_catalog_attr_json}}" data-confirm-assign-url="{{confirm_assign_url}}" data-api-duration-page-url="{{mapping_api_duration_url}}" data-region-assignments="{{region_assignments_attr_json}}">
     <div class="mapping-actions mapping-actions--footer">
         <a href="{{mapping_region_url}}" class="btn dashboard-logout">Courses Mapping</a>
     </div>
+
+    <article class="table-panel mapping-table-panel">
+        <div class="panel-head panel-head--table">
+            <div>
+                <h3>Assignment Lead Preview</h3>
+                <p class="table-subtext">Lead rows stay paginated here so large assignment batches remain easy to scan.</p>
+            </div>
+            <span class="panel-chip">{{main_table_count_label}}</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table admin-table align-middle mb-0">
+                <thead>{{main_table_head_html}}</thead>
+                <tbody>{{main_table_body_html}}</tbody>
+            </table>
+        </div>
+        {{main_table_pagination_html}}
+    </article>
 
     <article class="table-panel mapping-table-panel">
         <div class="panel-head panel-head--table">

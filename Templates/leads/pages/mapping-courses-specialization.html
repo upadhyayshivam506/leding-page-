@@ -9,7 +9,7 @@
     <div class="mapping-step"><span>3</span><strong>Preview</strong></div>
 </section>
 
-<section class="mapping-preview-page" data-mapping-courses-preview data-preview-grouped="{{preview_grouped_attr_json}}" data-confirm-url="{{confirm_mapping_url}}" data-mapping-configuration-id="{{mapping_configuration_id}}">
+<section class="mapping-preview-page" data-mapping-courses-preview data-server-paginated="true" data-confirm-url="{{confirm_mapping_url}}" data-mapping-configuration-id="{{mapping_configuration_id}}">
     <section class="mapping-preview-summary">
         <article class="info-panel">
             <p class="hero-label">Preview Filters</p>
@@ -40,24 +40,22 @@
         </article>
     </section>
 
-    <section class="region-groups region-groups--preview" data-preview-region-groups></section>
+    <section class="region-groups region-groups--preview">{{preview_region_groups_html}}</section>
 
     <article class="table-panel">
         <div class="panel-head panel-head--table">
             <div>
                 <h3>Preview Table</h3>
-                <p class="table-subtext">First 10 rows are shown per page with pagination and region-wise grouping before final confirmation.</p>
+                <p class="table-subtext">Preview rows now follow the same shared pagination structure as the rest of the project.</p>
             </div>
-            <span class="panel-chip" data-preview-count>{{preview_total_records}} leads</span>
+            <span class="panel-chip">{{main_table_count_label}}</span>
         </div>
         <div class="table-responsive">
             <table class="table admin-table align-middle mb-0">
-                <thead data-preview-head></thead>
-                <tbody data-preview-body></tbody>
+                <thead>{{main_table_head_html}}</thead>
+                <tbody>{{main_table_body_html}}</tbody>
             </table>
         </div>
-        <div class="table-pagination" data-preview-pagination></div>
-        <script type="application/json" data-preview-rows>{{preview_rows_json}}</script>
-        <script type="application/json" data-preview-headers>["Lead ID","Name","Email","Phone","Course","Specialization","Campus","College Name","City","State","Region"]</script>
+        {{main_table_pagination_html}}
     </article>
 </section>

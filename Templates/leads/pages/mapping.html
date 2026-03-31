@@ -9,7 +9,7 @@
     <div class="mapping-step"><span>3</span><strong>Assign</strong></div>
 </section>
 
-<section class="mapping-grid mapping-grid--preview" data-mapping-preview data-region-url="{{mapping_region_url}}">
+<section class="mapping-grid mapping-grid--preview">
     <article class="info-panel mapping-summary-card">
         <p class="hero-label">Uploaded file</p>
         <h3>{{uploaded_file_name}}</h3>
@@ -17,33 +17,31 @@
             <div><span>Uploaded at</span><strong>{{uploaded_file_time}}</strong></div>
             <div><span>Type</span><strong>{{uploaded_file_type}}</strong></div>
             <div><span>Size</span><strong>{{uploaded_file_size}}</strong></div>
-            <div><span>Total records</span><strong data-total-records>0</strong></div>
+            <div><span>Table view</span><strong>{{main_table_count_label}}</strong></div>
         </div>
         <div class="mapping-highlight">
             <span>Key fields</span>
-            <strong data-key-fields>Loading uploaded columns...</strong>
+            <strong>Lead ID, Name, Email, Phone, Course</strong>
         </div>
         <div class="mapping-actions mapping-actions--card">
-            <button type="button" class="btn dashboard-logout" data-mapping-next>Next</button>
+            <a href="{{mapping_region_url}}" class="btn dashboard-logout">Next</a>
         </div>
     </article>
 
-    <article class="table-panel mapping-table-panel" data-preview-table>
+    <article class="table-panel mapping-table-panel">
         <div class="panel-head panel-head--table">
             <div>
                 <h3>Uploaded Lead Preview</h3>
-                <p class="table-subtext">Uploaded rows are shown below with pagination at 20 rows per page.</p>
+                <p class="table-subtext">Uploaded rows are shown below with the shared pagination pattern used across all listing pages.</p>
             </div>
-            <span class="panel-chip" data-preview-count>0 rows</span>
+            <span class="panel-chip">{{main_table_count_label}}</span>
         </div>
         <div class="table-responsive">
-            <table class="table admin-table align-middle mb-0" data-upload-preview-table>
-                <thead data-preview-head></thead>
-                <tbody data-preview-body></tbody>
+            <table class="table admin-table align-middle mb-0">
+                <thead>{{main_table_head_html}}</thead>
+                <tbody>{{main_table_body_html}}</tbody>
             </table>
         </div>
-        <div class="table-pagination" data-preview-pagination></div>
-        <script type="application/json" data-preview-rows>{{lead_rows_json}}</script>
-        <script type="application/json" data-preview-headers>{{lead_headers_json}}</script>
+        {{main_table_pagination_html}}
     </article>
 </section>

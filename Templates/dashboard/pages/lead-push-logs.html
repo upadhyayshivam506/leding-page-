@@ -34,21 +34,19 @@
     </article>
 </section>
 
-<section class="table-panel leads-table-panel" data-lead-push-logs-table>
+<section class="table-panel leads-table-panel">
     <div class="panel-head panel-head--table">
         <div>
             <h3>API Delivery Logs</h3>
-            <p class="table-subtext">Every API request attempt is listed here with batch, lead details, college, status, response snapshot, and delivery time.</p>
+            <p class="table-subtext">Every API request attempt is listed here with consistent server-side pagination and a compact page window.</p>
         </div>
-        <span class="panel-chip" data-table-count>{{log_total_records}} logs</span>
+        <span class="panel-chip">{{main_table_count_label}}</span>
     </div>
     <div class="table-responsive">
         <table class="table admin-table align-middle mb-0">
-            <thead data-table-head></thead>
-            <tbody data-table-body></tbody>
+            <thead>{{main_table_head_html}}</thead>
+            <tbody>{{main_table_body_html}}</tbody>
         </table>
     </div>
-    <div class="table-pagination" data-table-pagination></div>
-    <script type="application/json" data-table-rows>{{log_rows_json}}</script>
-    <script type="application/json" data-table-headers>{{log_headers_json}}</script>
+    {{main_table_pagination_html}}
 </section>

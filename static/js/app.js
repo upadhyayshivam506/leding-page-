@@ -2,19 +2,6 @@ document.addEventListener('DOMContentLoaded', function () {
     var regionOrder = ['North', 'South', 'East', 'West / Others'];
     var defaultPreviewHeaders = ['Lead ID', 'Name', 'Email', 'Phone', 'Course', 'Specialization', 'Campus', 'College Name', 'City', 'State', 'Region'];
 
-    function readJsonScript(root, selector) {
-        var node = root.querySelector(selector);
-        if (!node) {
-            return [];
-        }
-
-        try {
-            return JSON.parse(node.textContent || '[]');
-        } catch (error) {
-            return [];
-        }
-    }
-
     function readJsonAttribute(node, name) {
         if (!node) {
             return [];
@@ -48,85 +35,6 @@ document.addEventListener('DOMContentLoaded', function () {
         });
 
         return grouped;
-    }
-
-    function buildPager(root, currentPage, totalPages, onChange) {
-        if (!root) {
-            return;
-        }
-
-        if (totalPages <= 1) {
-            root.innerHTML = '';
-            return;
-        }
-
-        var html = ['<button type="button" class="table-page-btn" data-page="' + (currentPage - 1) + '"' + (currentPage === 1 ? ' disabled' : '') + '>Prev</button>'];
-        for (var page = 1; page <= totalPages; page += 1) {
-            html.push('<button type="button" class="table-page-btn' + (page === currentPage ? ' is-active' : '') + '" data-page="' + page + '">' + page + '</button>');
-        }
-        html.push('<button type="button" class="table-page-btn" data-page="' + (currentPage + 1) + '"' + (currentPage === totalPages ? ' disabled' : '') + '>Next</button>');
-        root.innerHTML = html.join('');
-
-        root.querySelectorAll('[data-page]').forEach(function (button) {
-            button.addEventListener('click', function () {
-                var page = Number(button.getAttribute('data-page'));
-                if (page >= 1 && page <= totalPages) {
-                    onChange(page);
-                }
-            });
-        });
-    }
-
-    function renderTable(config) {
-        var headers = Array.isArray(config.headers) ? config.headers : [];
-        var rows = Array.isArray(config.rows) ? config.rows : [];
-        var rowsPerPage = Math.max(1, Number(config.rowsPerPage || 20));
-        var emptyMessage = config.emptyMessage || 'No data available.';
-        var totalPages = Math.max(1, Math.ceil(rows.length / rowsPerPage));
-
-        function draw(page) {
-            var currentPage = Math.min(Math.max(page, 1), totalPages);
-            var start = (currentPage - 1) * rowsPerPage;
-            var slice = rows.slice(start, start + rowsPerPage);
-
-            if (config.head) {
-                config.head.innerHTML = headers.length
-                    ? '<tr>' + headers.map(function (header) {
-                        return '<th>' + escapeHtml(header) + '</th>';
-                    }).join('') + '</tr>'
-                    : '';
-            }
-
-            if (!config.body) {
-                return;
-            }
-
-            if (!rows.length || !headers.length) {
-                config.body.innerHTML = '<tr><td colspan="' + Math.max(1, headers.length) + '" class="table-empty-state">' + escapeHtml(emptyMessage) + '</td></tr>';
-                if (config.countNode) {
-                    config.countNode.textContent = '0 rows';
-                }
-                if (config.paginationRoot) {
-                    config.paginationRoot.innerHTML = '';
-                }
-                return;
-            }
-
-            config.body.innerHTML = slice.map(function (row) {
-                return '<tr>' + headers.map(function (header) {
-                    return '<td>' + escapeHtml(row && row[header] != null ? row[header] : '') + '</td>';
-                }).join('') + '</tr>';
-            }).join('');
-
-            if (config.countNode) {
-                var end = Math.min(start + rowsPerPage, rows.length);
-                config.countNode.textContent = 'Showing ' + (start + 1) + '-' + end + ' of ' + rows.length + ' rows';
-            }
-
-            buildPager(config.paginationRoot, currentPage, totalPages, draw);
-        }
-
-        draw(1);
     }
 
     function renderCompactTable(rows, headers, emptyMessage) {
@@ -248,55 +156,6 @@ document.addEventListener('DOMContentLoaded', function () {
             };
             reader.readAsArrayBuffer(uploadInput.files[0]);
         });
-    }
-
-    var leadsRoot = document.querySelector('[data-leads-table]');
-    if (leadsRoot) {
-        renderTable({
-            headers: readJsonScript(leadsRoot, '[data-table-headers]'),
-            rows: readJsonScript(leadsRoot, '[data-table-rows]'),
-            head: leadsRoot.querySelector('[data-table-head]'),
-            body: leadsRoot.querySelector('[data-table-body]'),
-            countNode: leadsRoot.querySelector('[data-table-count]'),
-            paginationRoot: leadsRoot.querySelector('[data-table-pagination]'),
-            emptyMessage: 'Upload a lead file to see lead rows here.'
-        });
-    }
-
-    var logsRoot = document.querySelector('[data-lead-push-logs-table]');
-    if (logsRoot) {
-        renderTable({
-            headers: readJsonScript(logsRoot, '[data-table-headers]'),
-            rows: readJsonScript(logsRoot, '[data-table-rows]'),
-            head: logsRoot.querySelector('[data-table-head]'),
-            body: logsRoot.querySelector('[data-table-body]'),
-            countNode: logsRoot.querySelector('[data-table-count]'),
-            paginationRoot: logsRoot.querySelector('[data-table-pagination]'),
-            rowsPerPage: 12,
-            emptyMessage: 'No lead push logs are available yet.'
-        });
-    }
-
-    var uploadPreviewRoot = document.querySelector('[data-mapping-preview]');
-    if (uploadPreviewRoot) {
-        var uploadPreviewRows = readJsonScript(uploadPreviewRoot, '[data-preview-rows]');
-        var uploadPreviewHeaders = readJsonScript(uploadPreviewRoot, '[data-preview-headers]');
-        renderTable({
-            headers: uploadPreviewHeaders,
-            rows: uploadPreviewRows,
-            head: uploadPreviewRoot.querySelector('[data-preview-head]'),
-            body: uploadPreviewRoot.querySelector('[data-preview-body]'),
-            countNode: uploadPreviewRoot.querySelector('[data-preview-count]'),
-            paginationRoot: uploadPreviewRoot.querySelector('[data-preview-pagination]'),
-            emptyMessage: 'No uploaded lead rows were found for preview.'
-        });
-
-        var nextButton = uploadPreviewRoot.querySelector('[data-mapping-next]');
-        if (nextButton) {
-            nextButton.addEventListener('click', function () {
-                window.location.href = uploadPreviewRoot.getAttribute('data-region-url');
-            });
-        }
     }
 
     var regionRoot = document.querySelector('[data-course-mapping-page]');
@@ -597,31 +456,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     var previewRoot = document.querySelector('[data-mapping-courses-preview]');
     if (previewRoot) {
-        var previewRows = readJsonScript(previewRoot, '[data-preview-rows]');
-        var previewHeaders = readJsonScript(previewRoot, '[data-preview-headers]');
-        var previewGrouped = readJsonAttribute(previewRoot, 'data-preview-grouped');
         var confirmButton = previewRoot.querySelector('[data-confirm-mapping]');
         var durationMessage = previewRoot.querySelector('[data-duration-message]');
-
-        renderTable({
-            headers: previewHeaders.length ? previewHeaders : defaultPreviewHeaders,
-            rows: previewRows,
-            rowsPerPage: 10,
-            head: previewRoot.querySelector('[data-preview-head]'),
-            body: previewRoot.querySelector('[data-preview-body]'),
-            countNode: previewRoot.querySelector('[data-preview-count]'),
-            paginationRoot: previewRoot.querySelector('[data-preview-pagination]'),
-            emptyMessage: 'No leads available in preview.'
-        });
-
-        var regionGroupsRoot = previewRoot.querySelector('[data-preview-region-groups]');
-        if (regionGroupsRoot) {
-            var groupedRows = previewGrouped && typeof previewGrouped === 'object' ? previewGrouped : {};
-            regionGroupsRoot.innerHTML = regionOrder.map(function (region) {
-                var regionRows = Array.isArray(groupedRows[region]) ? groupedRows[region] : [];
-                return '<article class="region-group-card"><div class="panel-head panel-head--table"><div><h3>' + escapeHtml(region) + '</h3><p class="table-subtext">Preview rows grouped region-wise.</p></div><span class="panel-chip">' + escapeHtml(regionRows.length) + ' leads</span></div>' + renderCompactTable(regionRows.slice(0, 10), defaultPreviewHeaders, 'No preview rows in this region.') + '</article>';
-            }).join('');
-        }
 
         function setMessage(message, isError) {
             if (!durationMessage) {
@@ -661,8 +497,6 @@ document.addEventListener('DOMContentLoaded', function () {
     var regionColleaguesRoot = document.querySelector('[data-region-colleagues-page]');
     if (regionColleaguesRoot) {
         var regionSummary = readJsonAttribute(regionColleaguesRoot, 'data-region-summary');
-        var regionRows = readJsonAttribute(regionColleaguesRoot, 'data-region-rows');
-        var regionGrouped = groupRowsByRegion(regionRows);
         var colleagueCatalog = readJsonAttribute(regionColleaguesRoot, 'data-colleague-catalog');
         var existingAssignments = readJsonAttribute(regionColleaguesRoot, 'data-region-assignments');
         var assignmentGrid = regionColleaguesRoot.querySelector('[data-assignment-grid]');
@@ -670,6 +504,13 @@ document.addEventListener('DOMContentLoaded', function () {
         var confirmAssignButton = regionColleaguesRoot.querySelector('[data-confirm-assign]');
         var assignMessage = regionColleaguesRoot.querySelector('[data-assign-message]');
         var assignments = {};
+        var summaryLookup = {};
+
+        (Array.isArray(regionSummary) ? regionSummary : []).forEach(function (entry) {
+            if (entry && entry.region) {
+                summaryLookup[entry.region] = Number(entry.total || 0);
+            }
+        });
 
         regionOrder.forEach(function (region) {
             assignments[region] = existingAssignments && existingAssignments[region] ? existingAssignments[region] : [];
@@ -719,7 +560,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
             assignmentGrid.innerHTML = regionOrder.map(function (region) {
                 var options = catalogForRegion(region);
-                var leadCount = (regionGrouped[region] || []).length;
+                var leadCount = Number(summaryLookup[region] || 0);
                 var copy = leadCount > 0
                     ? String(leadCount) + ' leads ready for assignment'
                     : 'No leads ready for assignment';
@@ -784,7 +625,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     var apiDurationRoot = document.querySelector('[data-api-duration-page]');
     if (apiDurationRoot) {
-        var apiRows = readJsonAttribute(apiDurationRoot, 'data-region-rows');
+        var totalLeadCount = Number(apiDurationRoot.getAttribute('data-total-leads') || '0');
         var durationDefaults = readJsonAttribute(apiDurationRoot, 'data-duration-defaults');
         var selectedCollegeNames = readJsonAttribute(apiDurationRoot, 'data-selected-colleges');
         var selectedAssignments = readJsonAttribute(apiDurationRoot, 'data-region-assignments');
@@ -826,7 +667,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         function updateDurationSummary() {
-            var totalLeads = apiRows.length;
+            var totalLeads = totalLeadCount;
             var batchSize = batchSelect && batchSelect.value === 'custom' ? Number(customBatchInput && customBatchInput.value ? customBatchInput.value : 0) : Number(batchSelect ? batchSelect.value : 50);
             var delay = delaySelect && delaySelect.value === 'custom' ? Number(customDelayInput && customDelayInput.value ? customDelayInput.value : 0) : Number(delaySelect ? delaySelect.value : 0.2);
             var batches = batchSize > 0 ? Math.ceil(totalLeads / batchSize) : 0;

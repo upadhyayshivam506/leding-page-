@@ -10,6 +10,23 @@
 </section>
 
 <section class="mapping-region-page" data-course-mapping-page data-api-colleagues-url="{{mapping_api_url}}" data-region-rows="{{region_rows_attr_json}}" data-region-summary="{{region_summary_attr_json}}" data-columns="{{available_columns_attr_json}}" data-colleges="{{colleges_catalog_attr_json}}" data-duration-defaults="{{duration_defaults_attr_json}}" data-generate-preview-url="{{generate_preview_url}}" data-preview-page-url="{{preview_page_url}}" data-batch-id="{{uploaded_batch_id}}">
+    <article class="table-panel mapping-table-panel">
+        <div class="panel-head panel-head--table">
+            <div>
+                <h3>Region Mapping Table</h3>
+                <p class="table-subtext">This page now uses the same paginated table pattern as Leads, Preview, and Logs.</p>
+            </div>
+            <span class="panel-chip">{{main_table_count_label}}</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table admin-table align-middle mb-0">
+                <thead>{{main_table_head_html}}</thead>
+                <tbody>{{main_table_body_html}}</tbody>
+            </table>
+        </div>
+        {{main_table_pagination_html}}
+    </article>
+
     <div class="mapping-actions mapping-actions--footer">
         <button type="button" class="btn dashboard-logout" data-open-course-mapping>Courses Mapping</button>
     </div>

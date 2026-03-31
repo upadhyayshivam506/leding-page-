@@ -24,6 +24,23 @@ final class Lead
         return is_array($rows) ? $rows : [];
     }
 
+    public function paginate(int $limit, int $offset): array
+    {
+        $statement = Database::connection()->prepare(
+            'SELECT id, batch_id, lead_id, name, email, phone, course, specialization, campus, college_name, city, state, region, source_file, created_at
+             FROM leads
+             ORDER BY created_at DESC, id DESC
+             LIMIT :limit OFFSET :offset'
+        );
+        $statement->bindValue(':limit', max(1, $limit), PDO::PARAM_INT);
+        $statement->bindValue(':offset', max(0, $offset), PDO::PARAM_INT);
+        $statement->execute();
+
+        $rows = $statement->fetchAll();
+
+        return is_array($rows) ? $rows : [];
+    }
+
     public function countAll(): int
     {
         $statement = Database::connection()->query('SELECT COUNT(*) FROM leads');
@@ -91,6 +108,37 @@ final class Lead
              ORDER BY id ASC'
         );
         $statement->execute(['batch_id' => $batchId]);
+
+        $rows = $statement->fetchAll();
+
+        return is_array($rows) ? $rows : [];
+    }
+
+    public function countByBatch(string $batchId): int
+    {
+        $statement = Database::connection()->prepare(
+            'SELECT COUNT(*)
+             FROM leads
+             WHERE batch_id = :batch_id'
+        );
+        $statement->execute(['batch_id' => $batchId]);
+
+        return (int) $statement->fetchColumn();
+    }
+
+    public function findByBatchPaginated(string $batchId, int $limit, int $offset): array
+    {
+        $statement = Database::connection()->prepare(
+            'SELECT lead_id, name, email, phone, course, specialization, campus, college_name, city, state, region
+             FROM leads
+             WHERE batch_id = :batch_id
+             ORDER BY id ASC
+             LIMIT :limit OFFSET :offset'
+        );
+        $statement->bindValue(':batch_id', $batchId, PDO::PARAM_STR);
+        $statement->bindValue(':limit', max(1, $limit), PDO::PARAM_INT);
+        $statement->bindValue(':offset', max(0, $offset), PDO::PARAM_INT);
+        $statement->execute();
 
         $rows = $statement->fetchAll();
 

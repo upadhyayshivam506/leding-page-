@@ -1,17 +1,348 @@
-﻿<section class="page-grid">
-    <article class="info-panel">
-        <p class="hero-label">Core controls</p>
-        <h3>System configuration area</h3>
-        <ul class="feature-list">
-            <li>Database connection settings</li>
-            <li>Upload limits and allowed formats</li>
-            <li>Default processing ranges</li>
-            <li>Error logging and maintenance options</li>
-        </ul>
+<section class="page-heading">
+    <p class="hero-label">Admin Preferences</p>
+    <h2>Admin Profile Settings</h2>
+</section>
+
+<section class="admin-profile-page">
+    <article class="info-panel admin-settings-card">
+        <div class="admin-settings-card__header">
+            <div>
+                <p class="hero-label">Profile Management</p>
+                <h3>Admin Profile</h3>
+                <p class="admin-settings-card__copy">Update account details, contact information, and profile identity from one place.</p>
+            </div>
+            <div class="admin-profile-photo">
+                <img
+                    src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Crect width='160' height='160' rx='36' fill='%23191c2a'/%3E%3Ccircle cx='80' cy='60' r='28' fill='%23a66dff'/%3E%3Cpath d='M38 132c8-22 26-34 42-34s34 12 42 34' fill='%23f3e8ff' fill-opacity='.95'/%3E%3C/svg%3E"
+                    alt="Admin profile preview"
+                    data-profile-preview
+                >
+            </div>
+        </div>
+
+        <div class="mapping-form-grid admin-settings-grid">
+            <label class="form-label">
+                Full Name
+                <input type="text" class="assignment-select" value="Admin User" placeholder="Admin User" data-default-value="Admin User">
+            </label>
+            <label class="form-label">
+                Email Address
+                <input type="email" class="assignment-select" value="admin@example.com" placeholder="admin@example.com" data-default-value="admin@example.com">
+            </label>
+            <label class="form-label">
+                Username
+                <input type="text" class="assignment-select" value="admin" placeholder="admin" data-default-value="admin">
+            </label>
+            <label class="form-label">
+                Phone Number
+                <input type="text" class="assignment-select" value="+91XXXXXXXXXX" placeholder="+91XXXXXXXXXX" data-default-value="+91XXXXXXXXXX">
+            </label>
+            <label class="form-label">
+                Role
+                <input type="text" class="assignment-select admin-settings-readonly" value="Super Admin" readonly>
+            </label>
+            <label class="form-label">
+                Profile Photo Upload
+                <input type="file" class="assignment-select admin-settings-file" accept="image/*" data-profile-upload>
+            </label>
+        </div>
+
+        <div class="admin-settings-actions">
+            <button type="button" class="btn dashboard-logout" data-profile-save>Update Profile</button>
+            <button type="button" class="panel-link topbar-action-link" data-profile-cancel>Cancel</button>
+        </div>
     </article>
-    <article class="info-panel info-panel--accent">
-        <p class="hero-label">Future controls</p>
-        <h3>Operational safety</h3>
-        <p>You can later add admin preferences, notification toggles, backup actions, and environment health checks here.</p>
+
+    <article class="info-panel admin-settings-card info-panel--accent">
+        <div class="admin-settings-card__header">
+            <div>
+                <p class="hero-label">Account Security</p>
+                <h3>Change Password</h3>
+                <p class="admin-settings-card__copy">Use a strong password and confirm it before applying any frontend-only changes.</p>
+            </div>
+        </div>
+
+        <div class="mapping-form-grid admin-settings-grid">
+            <label class="form-label">
+                Current Password
+                <input type="password" class="assignment-select" placeholder="Enter current password" data-current-password>
+            </label>
+            <label class="form-label">
+                New Password
+                <input type="password" class="assignment-select" placeholder="Enter new password" data-new-password>
+            </label>
+            <label class="form-label">
+                Confirm New Password
+                <input type="password" class="assignment-select" placeholder="Confirm new password" data-confirm-password>
+            </label>
+        </div>
+
+        <p class="mapping-preview-message d-none" data-password-message></p>
+
+        <div class="admin-settings-actions">
+            <button type="button" class="btn dashboard-logout" data-password-save>Change Password</button>
+            <button type="button" class="panel-link topbar-action-link" data-password-reset>Reset</button>
+        </div>
     </article>
 </section>
+
+<div class="admin-settings-toast" data-settings-toast role="status" aria-live="polite"></div>
+
+<style>
+    .admin-profile-page {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 24px;
+    }
+
+    .admin-settings-card {
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+    }
+
+    .admin-settings-card__header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 20px;
+    }
+
+    .admin-settings-card__copy {
+        margin: 8px 0 0;
+        max-width: 540px;
+        color: rgba(247, 245, 255, 0.72);
+        line-height: 1.65;
+    }
+
+    .admin-profile-photo {
+        width: 116px;
+        height: 116px;
+        border-radius: 28px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+        flex-shrink: 0;
+    }
+
+    .admin-profile-photo img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+    }
+
+    .admin-settings-grid {
+        padding: 0;
+    }
+
+    .admin-settings-grid .form-label {
+        margin-bottom: 0;
+    }
+
+    .admin-settings-readonly {
+        opacity: 0.78;
+        cursor: default;
+    }
+
+    .admin-settings-file {
+        padding-top: 12px;
+        padding-bottom: 12px;
+    }
+
+    .admin-settings-actions {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        flex-wrap: wrap;
+    }
+
+    .admin-settings-toast {
+        position: fixed;
+        right: 28px;
+        bottom: 28px;
+        z-index: 1400;
+        min-width: 240px;
+        max-width: min(360px, calc(100vw - 32px));
+        padding: 14px 18px;
+        border-radius: 16px;
+        background: rgba(30, 160, 110, 0.96);
+        color: #f8fffc;
+        box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32);
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(12px);
+        transition: opacity 0.2s ease, transform 0.2s ease;
+        font-weight: 600;
+    }
+
+    .admin-settings-toast.is-visible {
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+    @media (max-width: 991.98px) {
+        .admin-profile-page {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    @media (max-width: 575.98px) {
+        .admin-settings-card__header {
+            flex-direction: column;
+        }
+
+        .admin-profile-photo {
+            width: 96px;
+            height: 96px;
+        }
+
+        .admin-settings-actions > * {
+            width: 100%;
+            justify-content: center;
+        }
+
+        .admin-settings-toast {
+            right: 16px;
+            left: 16px;
+            bottom: 16px;
+            max-width: none;
+        }
+    }
+</style>
+
+<script>
+    (function () {
+        var defaultPreview = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Crect width='160' height='160' rx='36' fill='%23191c2a'/%3E%3Ccircle cx='80' cy='60' r='28' fill='%23a66dff'/%3E%3Cpath d='M38 132c8-22 26-34 42-34s34 12 42 34' fill='%23f3e8ff' fill-opacity='.95'/%3E%3C/svg%3E";
+        var previewImage = document.querySelector('[data-profile-preview]');
+        var uploadInput = document.querySelector('[data-profile-upload]');
+        var profileSaveButton = document.querySelector('[data-profile-save]');
+        var profileCancelButton = document.querySelector('[data-profile-cancel]');
+        var passwordSaveButton = document.querySelector('[data-password-save]');
+        var passwordResetButton = document.querySelector('[data-password-reset]');
+        var passwordMessage = document.querySelector('[data-password-message]');
+        var toast = document.querySelector('[data-settings-toast]');
+        var currentPassword = document.querySelector('[data-current-password]');
+        var newPassword = document.querySelector('[data-new-password]');
+        var confirmPassword = document.querySelector('[data-confirm-password]');
+        var toastTimer = null;
+
+        function showToast(message) {
+            if (!toast) {
+                return;
+            }
+
+            toast.textContent = message;
+            toast.classList.add('is-visible');
+
+            if (toastTimer) {
+                clearTimeout(toastTimer);
+            }
+
+            toastTimer = setTimeout(function () {
+                toast.classList.remove('is-visible');
+            }, 2400);
+        }
+
+        function setPasswordMessage(message, isError) {
+            if (!passwordMessage) {
+                return;
+            }
+
+            if (!message) {
+                passwordMessage.textContent = '';
+                passwordMessage.classList.add('d-none');
+                passwordMessage.classList.remove('mapping-preview-message--error', 'mapping-preview-message--success');
+                return;
+            }
+
+            passwordMessage.textContent = message;
+            passwordMessage.classList.remove('d-none');
+            passwordMessage.classList.toggle('mapping-preview-message--error', !!isError);
+            passwordMessage.classList.toggle('mapping-preview-message--success', !isError);
+        }
+
+        if (uploadInput && previewImage) {
+            uploadInput.addEventListener('change', function () {
+                var file = uploadInput.files && uploadInput.files[0] ? uploadInput.files[0] : null;
+                if (!file) {
+                    previewImage.src = defaultPreview;
+                    return;
+                }
+
+                var reader = new FileReader();
+                reader.onload = function (event) {
+                    previewImage.src = event.target && event.target.result ? String(event.target.result) : defaultPreview;
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        if (profileSaveButton) {
+            profileSaveButton.addEventListener('click', function () {
+                showToast('Profile updated successfully');
+            });
+        }
+
+        if (profileCancelButton) {
+            profileCancelButton.addEventListener('click', function () {
+                document.querySelectorAll('[data-default-value]').forEach(function (input) {
+                    input.value = input.getAttribute('data-default-value') || '';
+                });
+
+                if (uploadInput) {
+                    uploadInput.value = '';
+                }
+
+                if (previewImage) {
+                    previewImage.src = defaultPreview;
+                }
+            });
+        }
+
+        if (passwordResetButton) {
+            passwordResetButton.addEventListener('click', function () {
+                if (currentPassword) {
+                    currentPassword.value = '';
+                }
+                if (newPassword) {
+                    newPassword.value = '';
+                }
+                if (confirmPassword) {
+                    confirmPassword.value = '';
+                }
+                setPasswordMessage('', false);
+            });
+        }
+
+        if (passwordSaveButton) {
+            passwordSaveButton.addEventListener('click', function () {
+                var nextPassword = newPassword ? newPassword.value.trim() : '';
+                var confirmValue = confirmPassword ? confirmPassword.value.trim() : '';
+
+                if (nextPassword.length < 6) {
+                    setPasswordMessage('Password must be at least 6 characters', true);
+                    return;
+                }
+
+                if (nextPassword !== confirmValue) {
+                    setPasswordMessage('Passwords do not match', true);
+                    return;
+                }
+
+                setPasswordMessage('', false);
+                showToast('Password changed successfully');
+
+                if (currentPassword) {
+                    currentPassword.value = '';
+                }
+                if (newPassword) {
+                    newPassword.value = '';
+                }
+                if (confirmPassword) {
+                    confirmPassword.value = '';
+                }
+            });
+        }
+    })();
+</script>

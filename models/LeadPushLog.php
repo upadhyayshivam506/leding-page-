@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Models;
 
 use Config\Database;
+use PDO;
 
 final class LeadPushLog
 {
@@ -20,6 +21,23 @@ final class LeadPushLog
              FROM lead_api_logs
              ORDER BY created_at DESC, id DESC'
         );
+
+        $rows = $statement->fetchAll();
+
+        return is_array($rows) ? $rows : [];
+    }
+
+    public function paginate(int $limit, int $offset): array
+    {
+        $statement = Database::connection()->prepare(
+            'SELECT id, batch_id, lead_id, name, email, phone, course, specialization, campus, college_name, city, state, region, source_file, status, response, attempt_no, created_at
+             FROM lead_api_logs
+             ORDER BY created_at DESC, id DESC
+             LIMIT :limit OFFSET :offset'
+        );
+        $statement->bindValue(':limit', max(1, $limit), PDO::PARAM_INT);
+        $statement->bindValue(':offset', max(0, $offset), PDO::PARAM_INT);
+        $statement->execute();
 
         $rows = $statement->fetchAll();
 

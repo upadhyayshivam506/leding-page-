@@ -13,6 +13,8 @@ use Services\LeadMappingService;
 
 final class DashboardController
 {
+    private const TABLE_PAGE_SIZE = 20;
+
     public function __construct(
         private readonly AuthService $auth = new AuthService(),
         private readonly Lead $leads = new Lead(),
@@ -40,7 +42,7 @@ final class DashboardController
     public function leads(): void
     {
         $user = $this->guard();
-        $leadData = $this->leadDataForView();
+        $leadData = $this->leadDataForView(current_page_number(), self::TABLE_PAGE_SIZE);
 
         $this->renderAdminPage($user, 'leads', 'leads/pages/leads', [
             'title' => e('Leads'),
@@ -49,16 +51,17 @@ final class DashboardController
             'page_description' => e('Upload lead files, save mapped rows into MySQL, and review the stored leads from the database.'),
             'flash_alert' => render_alert(flash(), 'dashboard-alert'),
             'page_action' => $this->uploadButtonHtml(),
-            'lead_rows_json' => $this->json($leadData['rows']),
-            'lead_headers_json' => $this->json($leadData['headers']),
-            'lead_total_records' => e((string) count($leadData['rows'])),
+            'main_table_head_html' => $leadData['table_head_html'],
+            'main_table_body_html' => $leadData['table_body_html'],
+            'main_table_pagination_html' => $leadData['pagination_html'],
+            'main_table_count_label' => e($leadData['count_label']),
         ]);
     }
 
     public function leadPushLogs(): void
     {
         $user = $this->guard();
-        $logData = $this->leadPushLogDataForView();
+        $logData = $this->leadPushLogDataForView(current_page_number(), self::TABLE_PAGE_SIZE);
         $logStats = $this->leadPushLogStats();
 
         $this->renderAdminPage($user, 'lead-push-logs', 'dashboard/pages/lead-push-logs', [
@@ -67,9 +70,10 @@ final class DashboardController
             'page_title' => e('Lead Push Logs'),
             'page_description' => e('Review every API push attempt with status, region, college, response, and delivery timestamp.'),
             'flash_alert' => render_alert(flash(), 'dashboard-alert'),
-            'log_rows_json' => $this->json($logData['rows']),
-            'log_headers_json' => $this->json($logData['headers']),
-            'log_total_records' => e((string) count($logData['rows'])),
+            'main_table_head_html' => $logData['table_head_html'],
+            'main_table_body_html' => $logData['table_body_html'],
+            'main_table_pagination_html' => $logData['pagination_html'],
+            'main_table_count_label' => e($logData['count_label']),
             'log_total_attempts' => e((string) $logStats['total_attempts']),
             'log_success_count' => e((string) $logStats['success_count']),
             'log_failed_count' => e((string) $logStats['failed_count']),
@@ -143,7 +147,13 @@ final class DashboardController
     {
         $user = $this->guard();
         $upload = $this->uploadedFileOrRedirect();
-        $leadData = $this->leadDataForBatch((string) ($upload['batch_id'] ?? ''));
+        $leadData = $this->leadBatchTableForView(
+            (string) ($upload['batch_id'] ?? ''),
+            current_page_number(),
+            self::TABLE_PAGE_SIZE,
+            'leads/mapping',
+            'No uploaded lead rows were found for preview.'
+        );
 
         $this->renderAdminPage($user, 'leads', 'leads/pages/mapping', [
             'title' => e('Lead Mapping'),
@@ -156,8 +166,10 @@ final class DashboardController
             'uploaded_file_time' => e((string) ($upload['uploaded_at'] ?? '')),
             'uploaded_file_type' => e((string) ($upload['extension'] ?? '')),
             'uploaded_file_size' => e(number_format(((int) ($upload['size'] ?? 0)) / 1024, 2) . ' KB'),
-            'lead_rows_json' => $this->json($leadData['rows']),
-            'lead_headers_json' => $this->json($leadData['headers']),
+            'main_table_head_html' => $leadData['table_head_html'],
+            'main_table_body_html' => $leadData['table_body_html'],
+            'main_table_pagination_html' => $leadData['pagination_html'],
+            'main_table_count_label' => e($leadData['count_label']),
             'mapping_step' => 'preview',
             'mapping_region_url' => e(app_url('leads/mapping/region')),
             'mapping_api_url' => e(app_url('leads/mapping/region/api-colleagues')),
@@ -170,6 +182,13 @@ final class DashboardController
         $upload = $this->uploadedFileOrRedirect();
         $batchId = (string) ($upload['batch_id'] ?? '');
         $rows = $this->leadDataForBatch($batchId)['rows'];
+        $regionTable = $this->leadBatchTableForView(
+            $batchId,
+            current_page_number(),
+            self::TABLE_PAGE_SIZE,
+            'leads/mapping/region',
+            'No leads are available for region mapping.'
+        );
         $summary = $this->leads->summarizeByBatch($batchId);
         $durationDefaults = $this->durationDefaults();
 
@@ -182,6 +201,10 @@ final class DashboardController
             'page_action' => '<a href="' . e(app_url('leads/mapping')) . '" class="panel-link topbar-action-link">Back</a>',
             'uploaded_file_name' => e((string) ($upload['original_name'] ?? '')),
             'uploaded_file_time' => e((string) ($upload['uploaded_at'] ?? '')),
+            'main_table_head_html' => $regionTable['table_head_html'],
+            'main_table_body_html' => $regionTable['table_body_html'],
+            'main_table_pagination_html' => $regionTable['pagination_html'],
+            'main_table_count_label' => e($regionTable['count_label']),
             'region_rows_attr_json' => $this->jsonAttribute($rows),
             'region_summary_attr_json' => $this->jsonAttribute($summary),
             'available_columns_attr_json' => $this->jsonAttribute($this->leadMapping->availableColumns()),
@@ -207,6 +230,15 @@ final class DashboardController
         $grouped = is_array($preview) && isset($preview['grouped']) && is_array($preview['grouped'])
             ? (array) $preview['grouped']
             : $this->leadMapping->groupRowsByRegion($rows);
+        $assignmentPreviewTable = $this->buildTableView(
+            $this->batchLeadHeaders(),
+            $rows,
+            current_page_number(),
+            self::TABLE_PAGE_SIZE,
+            'leads/mapping/region/api-colleagues',
+            'No leads are available for assignment preview.',
+            'leads'
+        );
         $requestedSummary = $this->requestedRegionSummary();
         $summary = $requestedSummary !== []
             ? $this->normalizeRegionSummary($requestedSummary, $grouped)
@@ -222,7 +254,10 @@ final class DashboardController
             'page_action' => '<a href="' . e(app_url('leads/mapping/mapping-courses-specialization')) . '" class="panel-link topbar-action-link">Back</a>',
             'uploaded_file_name' => e((string) ($upload['original_name'] ?? '')),
             'uploaded_batch_id' => e((string) ($upload['batch_id'] ?? '')),
-            'region_rows_attr_json' => $this->jsonAttribute($rows),
+            'main_table_head_html' => $assignmentPreviewTable['table_head_html'],
+            'main_table_body_html' => $assignmentPreviewTable['table_body_html'],
+            'main_table_pagination_html' => $assignmentPreviewTable['pagination_html'],
+            'main_table_count_label' => e($assignmentPreviewTable['count_label']),
             'region_summary_attr_json' => $this->jsonAttribute($summary),
             'colleague_catalog_attr_json' => $this->jsonAttribute($this->leadMapping->colleagueCatalogByRegion()),
             'confirm_assign_url' => e(app_url('leads/mapping/confirm-assignments.php')),
@@ -312,6 +347,15 @@ final class DashboardController
         $upload = $this->uploadedFileOrRedirect();
         $preview = $this->mappingPreviewOrRedirect();
         $durationDefaults = $this->durationDefaults();
+        $previewTable = $this->buildTableView(
+            $this->batchLeadHeaders(),
+            (array) ($preview['data'] ?? []),
+            current_page_number(),
+            self::TABLE_PAGE_SIZE,
+            'leads/mapping/mapping-courses-specialization',
+            'No leads available in preview.',
+            'leads'
+        );
 
         $this->renderAdminPage($user, 'leads', 'leads/pages/mapping-courses-specialization', [
             'title' => e('Mapping Courses Specialization'),
@@ -322,9 +366,17 @@ final class DashboardController
             'page_action' => '<a href="' . e(app_url('leads/mapping/region')) . '" class="panel-link topbar-action-link">Back</a>',
             'uploaded_file_name' => e((string) ($upload['original_name'] ?? '')),
             'uploaded_batch_id' => e((string) ($preview['batch_id'] ?? '')),
-            'preview_rows_json' => $this->json($preview['data'] ?? []),
-            'preview_grouped_attr_json' => $this->jsonAttribute($preview['grouped'] ?? []),
             'preview_total_records' => e((string) ($preview['total'] ?? 0)),
+            'main_table_head_html' => $previewTable['table_head_html'],
+            'main_table_body_html' => $previewTable['table_body_html'],
+            'main_table_pagination_html' => $previewTable['pagination_html'],
+            'main_table_count_label' => e($previewTable['count_label']),
+            'preview_region_groups_html' => $this->renderRegionGroupCards(
+                (array) ($preview['grouped'] ?? []),
+                10,
+                'Preview rows grouped region-wise.',
+                'No preview rows in this region.'
+            ),
             'preview_selected_regions' => e(implode(', ', (array) ($preview['regions'] ?? []))),
             'preview_selected_courses' => e(implode(', ', (array) ($preview['course_values'] ?? []))),
             'preview_selected_specialization' => e((string) ($preview['specialization'] ?? '')),
@@ -434,7 +486,7 @@ final class DashboardController
             'page_action' => '<a href="' . e(app_url('leads/mapping/region/api-colleagues')) . '" class="panel-link topbar-action-link">Back</a>',
             'uploaded_file_name' => e((string) ($upload['original_name'] ?? '')),
             'uploaded_batch_id' => e((string) ($upload['batch_id'] ?? '')),
-            'region_rows_attr_json' => $this->jsonAttribute($rows),
+            'api_duration_total_leads' => e((string) count($rows)),
             'duration_defaults_attr_json' => $this->jsonAttribute($this->durationDefaults()),
             'save_duration_url' => e(app_url('leads/mapping/save-duration-settings.php')),
             'selected_college_names_attr_json' => $this->jsonAttribute($this->selectedCollegeNames($selectedCollegeIds)),
@@ -518,18 +570,6 @@ final class DashboardController
         exit;
     }
 
-    public function apiSettings(): void
-    {
-        $user = $this->guard();
-        $this->renderAdminPage($user, 'api-settings', 'dashboard/pages/api-settings', [
-            'title' => e('API Settings'),
-            'page_kicker' => e('Integration setup'),
-            'page_title' => e('API Settings'),
-            'page_description' => e('Configure college endpoints, payload formats, throttling rules, and delivery settings from this page.'),
-            'flash_alert' => '',
-        ]);
-    }
-
     public function systemConfig(): void
     {
         $user = $this->guard();
@@ -580,39 +620,91 @@ final class DashboardController
             . '</form>';
     }
 
-    private function leadDataForView(): array
+    private function leadDataForView(int $currentPage, int $recordsPerPage): array
     {
+        $headers = $this->leadListHeaders();
+
         try {
-            $rows = $this->leads->all();
+            $totalRecords = $this->leads->countAll();
+            if ($totalRecords > 0) {
+                $pagination = pagination_state($totalRecords, $recordsPerPage, $currentPage);
+                $rows = $this->mapLeadListRows($this->leads->paginate($pagination['records_per_page'], $pagination['offset']));
+
+                return $this->buildTableFromPagination(
+                    $headers,
+                    $rows,
+                    $pagination,
+                    'leads',
+                    'Upload a lead file to see lead rows here.',
+                    'leads'
+                );
+            }
         } catch (PDOException) {
-            return $this->uploadedLeadData();
+            return $this->buildTableView(
+                $headers,
+                $this->uploadedLeadData()['rows'],
+                $currentPage,
+                $recordsPerPage,
+                'leads',
+                'Upload a lead file to see lead rows here.',
+                'leads'
+            );
         }
 
-        if ($rows === []) {
-            return $this->uploadedLeadData();
+        return $this->buildTableView(
+            $headers,
+            $this->uploadedLeadData()['rows'],
+            $currentPage,
+            $recordsPerPage,
+            'leads',
+            'Upload a lead file to see lead rows here.',
+            'leads'
+        );
+    }
+
+    private function leadBatchTableForView(
+        string $batchId,
+        int $currentPage,
+        int $recordsPerPage,
+        string $basePath,
+        string $emptyMessage
+    ): array {
+        $headers = $this->batchLeadHeaders();
+        $rows = [];
+        $totalRecords = 0;
+
+        if ($batchId !== '') {
+            try {
+                $totalRecords = $this->leads->countByBatch($batchId);
+                if ($totalRecords > 0) {
+                    $pagination = pagination_state($totalRecords, $recordsPerPage, $currentPage);
+                    $rows = $this->mapBatchLeadRows($this->leads->findByBatchPaginated($batchId, $pagination['records_per_page'], $pagination['offset']));
+
+                    return $this->buildTableFromPagination(
+                        $headers,
+                        $rows,
+                        $pagination,
+                        $basePath,
+                        $emptyMessage,
+                        'leads'
+                    );
+                }
+            } catch (PDOException) {
+                $rows = [];
+            }
         }
 
-        return [
-            'rows' => array_map(static function (array $row): array {
-                return [
-                    'Batch ID' => (string) ($row['batch_id'] ?? ''),
-                    'Lead ID' => (string) ($row['lead_id'] ?? ''),
-                    'Name' => (string) ($row['name'] ?? ''),
-                    'Email' => (string) ($row['email'] ?? ''),
-                    'Phone' => (string) ($row['phone'] ?? ''),
-                    'Course' => (string) ($row['course'] ?? ''),
-                    'Specialization' => (string) ($row['specialization'] ?? ''),
-                    'Campus' => (string) ($row['campus'] ?? ''),
-                    'College Name' => (string) ($row['college_name'] ?? ''),
-                    'City' => (string) ($row['city'] ?? ''),
-                    'State' => (string) ($row['state'] ?? ''),
-                    'Region' => (string) ($row['region'] ?? ''),
-                    'Source File' => (string) ($row['source_file'] ?? ''),
-                    'Created At' => (string) ($row['created_at'] ?? ''),
-                ];
-            }, $rows),
-            'headers' => ['Batch ID', 'Lead ID', 'Name', 'Email', 'Phone', 'Course', 'Specialization', 'Campus', 'College Name', 'City', 'State', 'Region', 'Source File', 'Created At'],
-        ];
+        $fallbackRows = $this->uploadedLeadData()['rows'];
+
+        return $this->buildTableView(
+            $headers,
+            $fallbackRows,
+            $currentPage,
+            $recordsPerPage,
+            $basePath,
+            $emptyMessage,
+            'leads'
+        );
     }
 
     private function leadDataForBatch(string $batchId): array
@@ -632,22 +724,8 @@ final class DashboardController
         }
 
         return [
-            'rows' => array_map(static function (array $row): array {
-                return [
-                    'Lead ID' => (string) ($row['lead_id'] ?? ''),
-                    'Name' => (string) ($row['name'] ?? ''),
-                    'Email' => (string) ($row['email'] ?? ''),
-                    'Phone' => (string) ($row['phone'] ?? ''),
-                    'Course' => (string) ($row['course'] ?? ''),
-                    'Specialization' => (string) ($row['specialization'] ?? ''),
-                    'Campus' => (string) ($row['campus'] ?? ''),
-                    'College Name' => (string) ($row['college_name'] ?? ''),
-                    'City' => (string) ($row['city'] ?? ''),
-                    'State' => (string) ($row['state'] ?? ''),
-                    'Region' => (string) ($row['region'] ?? ''),
-                ];
-            }, $rows),
-            'headers' => ['Lead ID', 'Name', 'Email', 'Phone', 'Course', 'Specialization', 'Campus', 'College Name', 'City', 'State', 'Region'],
+            'rows' => $this->mapBatchLeadRows($rows),
+            'headers' => $this->batchLeadHeaders(),
         ];
     }
 
@@ -866,6 +944,159 @@ final class DashboardController
         }, $rows);
     }
 
+    private function leadListHeaders(): array
+    {
+        return ['Batch ID', 'Lead ID', 'Name', 'Email', 'Phone', 'Course', 'Specialization', 'Campus', 'College Name', 'City', 'State', 'Region', 'Source File', 'Created At'];
+    }
+
+    private function batchLeadHeaders(): array
+    {
+        return ['Lead ID', 'Name', 'Email', 'Phone', 'Course', 'Specialization', 'Campus', 'College Name', 'City', 'State', 'Region'];
+    }
+
+    private function logHeaders(): array
+    {
+        return ['Batch ID', 'Lead ID', 'Name', 'Email', 'Phone', 'Course', 'Specialization', 'Campus', 'College Name', 'City', 'State', 'Region', 'Source File', 'Status', 'Attempt', 'Response', 'Created At'];
+    }
+
+    private function mapLeadListRows(array $rows): array
+    {
+        return array_map(static function (array $row): array {
+            return [
+                'Batch ID' => (string) ($row['batch_id'] ?? ''),
+                'Lead ID' => (string) ($row['lead_id'] ?? ''),
+                'Name' => (string) ($row['name'] ?? ''),
+                'Email' => (string) ($row['email'] ?? ''),
+                'Phone' => (string) ($row['phone'] ?? ''),
+                'Course' => (string) ($row['course'] ?? ''),
+                'Specialization' => (string) ($row['specialization'] ?? ''),
+                'Campus' => (string) ($row['campus'] ?? ''),
+                'College Name' => (string) ($row['college_name'] ?? ''),
+                'City' => (string) ($row['city'] ?? ''),
+                'State' => (string) ($row['state'] ?? ''),
+                'Region' => (string) ($row['region'] ?? ''),
+                'Source File' => (string) ($row['source_file'] ?? ''),
+                'Created At' => (string) ($row['created_at'] ?? ''),
+            ];
+        }, $rows);
+    }
+
+    private function mapBatchLeadRows(array $rows): array
+    {
+        return array_map(static function (array $row): array {
+            return [
+                'Lead ID' => (string) ($row['lead_id'] ?? $row['Lead ID'] ?? ''),
+                'Name' => (string) ($row['name'] ?? $row['Name'] ?? ''),
+                'Email' => (string) ($row['email'] ?? $row['Email'] ?? ''),
+                'Phone' => (string) ($row['phone'] ?? $row['Phone'] ?? ''),
+                'Course' => (string) ($row['course'] ?? $row['Course'] ?? ''),
+                'Specialization' => (string) ($row['specialization'] ?? $row['Specialization'] ?? ''),
+                'Campus' => (string) ($row['campus'] ?? $row['Campus'] ?? ''),
+                'College Name' => (string) ($row['college_name'] ?? $row['College Name'] ?? ''),
+                'City' => (string) ($row['city'] ?? $row['City'] ?? ''),
+                'State' => (string) ($row['state'] ?? $row['State'] ?? ''),
+                'Region' => (string) ($row['region'] ?? $row['Region'] ?? ''),
+            ];
+        }, $rows);
+    }
+
+    private function mapLogRows(array $rows): array
+    {
+        return array_map(static function (array $row): array {
+            $response = trim((string) ($row['response'] ?? ''));
+            $response = preg_replace('/\s+/', ' ', $response ?? '');
+            $response = is_string($response) ? trim($response) : '';
+            if (strlen($response) > 220) {
+                $response = substr($response, 0, 220) . '...';
+            }
+
+            return [
+                'Batch ID' => (string) ($row['batch_id'] ?? ''),
+                'Lead ID' => (string) ($row['lead_id'] ?? ''),
+                'Name' => (string) ($row['name'] ?? ''),
+                'Email' => (string) ($row['email'] ?? ''),
+                'Phone' => (string) ($row['phone'] ?? ''),
+                'Course' => (string) ($row['course'] ?? ''),
+                'Specialization' => (string) ($row['specialization'] ?? ''),
+                'Campus' => (string) ($row['campus'] ?? ''),
+                'College Name' => (string) ($row['college_name'] ?? ''),
+                'City' => (string) ($row['city'] ?? ''),
+                'State' => (string) ($row['state'] ?? ''),
+                'Region' => (string) ($row['region'] ?? ''),
+                'Source File' => (string) ($row['source_file'] ?? ''),
+                'Status' => (string) ($row['status'] ?? ''),
+                'Attempt' => (string) ($row['attempt_no'] ?? '1'),
+                'Response' => $response,
+                'Created At' => (string) ($row['created_at'] ?? ''),
+            ];
+        }, $rows);
+    }
+
+    private function buildTableView(
+        array $headers,
+        array $rows,
+        int $currentPage,
+        int $recordsPerPage,
+        string $basePath,
+        string $emptyMessage,
+        string $itemLabel = 'rows'
+    ): array {
+        $pagination = paginate_array($rows, $currentPage, $recordsPerPage);
+
+        return $this->buildTableFromPagination(
+            $headers,
+            $pagination['rows'],
+            $pagination,
+            $basePath,
+            $emptyMessage,
+            $itemLabel
+        );
+    }
+
+    private function buildTableFromPagination(
+        array $headers,
+        array $rows,
+        array $pagination,
+        string $basePath,
+        string $emptyMessage,
+        string $itemLabel = 'rows'
+    ): array {
+        $countLabel = $pagination['total_records'] > 0
+            ? 'Showing ' . $pagination['from_record'] . '-' . $pagination['to_record'] . ' of ' . $pagination['total_records'] . ' ' . $itemLabel
+            : '0 ' . $itemLabel;
+
+        return [
+            'table_head_html' => render_table_head($headers),
+            'table_body_html' => render_table_body($headers, $rows, $emptyMessage),
+            'pagination_html' => generatePagination((int) $pagination['current_page'], (int) $pagination['total_pages'], $basePath),
+            'count_label' => $countLabel,
+        ];
+    }
+
+    private function renderRegionGroupCards(array $groupedRows, int $previewLimit, string $description, string $emptyMessage): string
+    {
+        $cards = [];
+
+        foreach ($this->leadMapping->regions() as $region) {
+            $rows = array_values((array) ($groupedRows[$region] ?? []));
+            $cards[] = '<article class="region-group-card">'
+                . '<div class="panel-head panel-head--table"><div><h3>' . e($region) . '</h3><p class="table-subtext">' . e($description) . '</p></div><span class="panel-chip">' . e((string) count($rows)) . ' leads</span></div>'
+                . $this->renderCompactTableHtml(array_slice($this->mapBatchLeadRows($rows), 0, $previewLimit), $this->batchLeadHeaders(), $emptyMessage)
+                . '</article>';
+        }
+
+        return implode('', $cards);
+    }
+
+    private function renderCompactTableHtml(array $rows, array $headers, string $emptyMessage): string
+    {
+        return '<div class="table-responsive"><table class="table admin-table align-middle mb-0"><thead>'
+            . render_table_head($headers)
+            . '</thead><tbody>'
+            . render_table_body($headers, $rows, $emptyMessage)
+            . '</tbody></table></div>';
+    }
+
     private function requestedRegionSummary(): array
     {
         $payload = $_GET['region_summary_json'] ?? null;
@@ -1076,48 +1307,34 @@ final class DashboardController
         }
     }
 
-    private function leadPushLogDataForView(): array
+    private function leadPushLogDataForView(int $currentPage, int $recordsPerPage): array
     {
+        $headers = $this->logHeaders();
+
         try {
-            $rows = $this->leadPushLogs->all();
+            $totalRecords = $this->leadPushLogs->countAll();
+            $pagination = pagination_state($totalRecords, $recordsPerPage, $currentPage);
+            $rows = $this->mapLogRows($this->leadPushLogs->paginate($pagination['records_per_page'], $pagination['offset']));
+
+            return $this->buildTableFromPagination(
+                $headers,
+                $rows,
+                $pagination,
+                'lead-push-logs',
+                'No lead push logs are available yet.',
+                'logs'
+            );
         } catch (PDOException) {
-            return [
-                'rows' => [],
-                'headers' => ['Batch ID', 'Lead ID', 'Name', 'Email', 'Phone', 'Course', 'Specialization', 'Campus', 'College Name', 'City', 'State', 'Region', 'Source File', 'Status', 'Attempt', 'Response', 'Created At'],
-            ];
+            return $this->buildTableView(
+                $headers,
+                [],
+                $currentPage,
+                $recordsPerPage,
+                'lead-push-logs',
+                'No lead push logs are available yet.',
+                'logs'
+            );
         }
-
-        return [
-            'rows' => array_map(static function (array $row): array {
-                $response = trim((string) ($row['response'] ?? ''));
-                $response = preg_replace('/\s+/', ' ', $response ?? '');
-                $response = is_string($response) ? trim($response) : '';
-                if (strlen($response) > 220) {
-                    $response = substr($response, 0, 220) . '...';
-                }
-
-                return [
-                    'Batch ID' => (string) ($row['batch_id'] ?? ''),
-                    'Lead ID' => (string) ($row['lead_id'] ?? ''),
-                    'Name' => (string) ($row['name'] ?? ''),
-                    'Email' => (string) ($row['email'] ?? ''),
-                    'Phone' => (string) ($row['phone'] ?? ''),
-                    'Course' => (string) ($row['course'] ?? ''),
-                    'Specialization' => (string) ($row['specialization'] ?? ''),
-                    'Campus' => (string) ($row['campus'] ?? ''),
-                    'Region' => (string) ($row['region'] ?? ''),
-                    'College Name' => (string) ($row['college_name'] ?? ''),
-                    'City' => (string) ($row['city'] ?? ''),
-                    'State' => (string) ($row['state'] ?? ''),
-                    'Source File' => (string) ($row['source_file'] ?? ''),
-                    'Status' => (string) ($row['status'] ?? ''),
-                    'Attempt' => (string) ($row['attempt_no'] ?? '1'),
-                    'Response' => $response,
-                    'Created At' => (string) ($row['created_at'] ?? ''),
-                ];
-            }, $rows),
-            'headers' => ['Batch ID', 'Lead ID', 'Name', 'Email', 'Phone', 'Course', 'Specialization', 'Campus', 'College Name', 'City', 'State', 'Region', 'Source File', 'Status', 'Attempt', 'Response', 'Created At'],
-        ];
     }
 
     private function leadPushLogStats(): array
@@ -1150,13 +1367,11 @@ final class DashboardController
             'logged_in_at' => e((string) ($user['logged_in_at'] ?? '-')),
             'dashboard_url' => e(app_url('dashboard')),
             'leads_url' => e(app_url('leads')),
-            'api_settings_url' => e(app_url('api-settings')),
             'system_config_url' => e(app_url('system-config')),
             'lead_push_logs_url' => e(app_url('lead-push-logs')),
             'dashboard_active' => $activePage === 'dashboard' ? 'is-active' : '',
             'leads_active' => $activePage === 'leads' ? 'is-active' : '',
             'lead_push_logs_active' => $activePage === 'lead-push-logs' ? 'is-active' : '',
-            'api_settings_active' => $activePage === 'api-settings' ? 'is-active' : '',
             'system_config_active' => $activePage === 'system-config' ? 'is-active' : '',
             'flash_alert' => '',
             'page_action' => '',
@@ -1168,12 +1383,12 @@ final class DashboardController
             'total_students' => '0',
             'total_uploaded_files' => '0',
             'mapping_step' => '',
-            'lead_rows_json' => '[]',
-            'lead_headers_json' => '[]',
-            'lead_total_records' => '0',
-            'log_rows_json' => '[]',
-            'log_headers_json' => '[]',
-            'log_total_records' => '0',
+            'main_table_head_html' => '',
+            'main_table_body_html' => '',
+            'main_table_pagination_html' => '',
+            'main_table_count_label' => '0 rows',
+            'preview_region_groups_html' => '',
+            'api_duration_total_leads' => '0',
             'log_total_attempts' => '0',
             'log_success_count' => '0',
             'log_failed_count' => '0',
@@ -1186,8 +1401,6 @@ final class DashboardController
             'duration_defaults_attr_json' => '[]',
             'generate_preview_url' => e(app_url('leads/mapping/generate-preview.php')),
             'preview_page_url' => e(app_url('leads/mapping/mapping-courses-specialization')),
-            'preview_rows_json' => '[]',
-            'preview_grouped_attr_json' => '[]',
             'preview_total_records' => '0',
             'preview_selected_regions' => '',
             'preview_selected_courses' => '',

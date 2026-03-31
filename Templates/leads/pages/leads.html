@@ -3,21 +3,19 @@
     <h2>{{page_title}}</h2>
 </section>
 
-<section class="table-panel leads-table-panel" data-leads-table>
+<section class="table-panel leads-table-panel">
     <div class="panel-head panel-head--table">
         <div>
             <h3>Lead Summary Table</h3>
-            <p class="table-subtext">Uploaded lead rows are shown below with pagination at 20 rows per page.</p>
+            <p class="table-subtext">Lead records are shown with a shared, server-side pagination system across the project.</p>
         </div>
-        <span class="panel-chip" data-table-count>{{lead_total_records}} leads</span>
+        <span class="panel-chip">{{main_table_count_label}}</span>
     </div>
     <div class="table-responsive">
         <table class="table admin-table align-middle mb-0">
-            <thead data-table-head></thead>
-            <tbody data-table-body></tbody>
+            <thead>{{main_table_head_html}}</thead>
+            <tbody>{{main_table_body_html}}</tbody>
         </table>
     </div>
-    <div class="table-pagination" data-table-pagination></div>
-    <script type="application/json" data-table-rows>{{lead_rows_json}}</script>
-    <script type="application/json" data-table-headers>{{lead_headers_json}}</script>
+    {{main_table_pagination_html}}
 </section>

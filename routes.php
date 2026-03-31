@@ -23,6 +23,5 @@ return [
     'GET /leads/mapping/api-duration' => [DashboardController::class, 'mappingApiDuration'],
     'POST /leads/mapping/save-duration-settings.php' => [DashboardController::class, 'saveDurationSettings'],
     'GET /leads/mapping/region/api-colleagues' => [DashboardController::class, 'mappingApiColleagues'],
-    'GET /api-settings' => [DashboardController::class, 'apiSettings'],
     'GET /system-config' => [DashboardController::class, 'systemConfig'],
 ];
