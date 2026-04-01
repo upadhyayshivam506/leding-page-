@@ -116,6 +116,7 @@ CREATE TABLE `lead_mapping_jobs` (
   `status` VARCHAR(50) NOT NULL DEFAULT 'queued',
   `total_leads` INT NOT NULL DEFAULT 0,
   `total_requests` INT NOT NULL DEFAULT 0,
+  `processed_leads` INT NOT NULL DEFAULT 0,
   `processed_requests` INT NOT NULL DEFAULT 0,
   `success_count` INT NOT NULL DEFAULT 0,
   `failed_count` INT NOT NULL DEFAULT 0,

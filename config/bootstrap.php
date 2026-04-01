@@ -35,11 +35,14 @@ if ($sessionPath === null || trim($sessionPath) === '') {
     $sessionPath = dirname(__DIR__) . '/uploads/sessions';
 }
 
+$sessionPath = str_replace('\\', DIRECTORY_SEPARATOR, $sessionPath);
+
 if (!is_dir($sessionPath)) {
     mkdir($sessionPath, 0775, true);
 }
 
 if (is_dir($sessionPath) && is_writable($sessionPath)) {
+    ini_set('session.save_path', $sessionPath);
     session_save_path($sessionPath);
 }
 

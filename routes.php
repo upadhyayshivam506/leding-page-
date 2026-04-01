@@ -14,6 +14,7 @@ return [
     'GET /leads' => [DashboardController::class, 'leads'],
     'GET /api/leads' => [DashboardController::class, 'leadsApi'],
     'GET /api/leads/export' => [DashboardController::class, 'exportLeadsCsv'],
+    'GET /api/lead-push-job-status' => [DashboardController::class, 'leadPushJobStatus'],
     'GET /lead-push-logs' => [DashboardController::class, 'leadPushLogs'],
     'POST /leads/upload' => [DashboardController::class, 'uploadLeadFile'],
     'GET /leads/mapping' => [DashboardController::class, 'mapping'],

@@ -23,7 +23,7 @@ final class Database
         $username = self::stringValue('DB_USER', 'root');
         $password = self::readEnv('DB_PASSWORD') ?? '';
         $charset = self::stringValue('DB_CHARSET', 'utf8mb4');
-        $socket = self::resolveSocket($host);
+        $socket = self::resolveSocket();
 
         $dsn = $socket !== null
             ? sprintf('mysql:unix_socket=%s;dbname=%s;charset=%s', $socket, $database, $charset)
@@ -80,29 +80,11 @@ final class Database
         return is_string($value) ? $value : (string) $value;
     }
 
-    private static function resolveSocket(string $host): ?string
+    private static function resolveSocket(): ?string
     {
         $socket = self::readEnv('DB_SOCKET');
         if ($socket !== null && trim($socket) !== '') {
             return trim($socket);
-        }
-
-        if (DIRECTORY_SEPARATOR === '\\') {
-            return null;
-        }
-
-        if (!in_array(strtolower(trim($host)), ['localhost', '127.0.0.1'], true)) {
-            return null;
-        }
-
-        foreach ([
-            '/var/run/mysqld/mysqld.sock',
-            '/tmp/mysql.sock',
-            '/var/lib/mysql/mysql.sock',
-        ] as $candidate) {
-            if (is_file($candidate)) {
-                return $candidate;
-            }
         }
 
         return null;

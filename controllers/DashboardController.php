@@ -45,18 +45,27 @@ final class DashboardController
         $filters = $this->leadFiltersFromRequest();
         $leadData = $this->leadDataForView($filters, current_page_number(), self::TABLE_PAGE_SIZE);
         $filterOptions = $this->leadFilterOptions();
+        $uploadNotice = trim((string) ($_GET['upload_notice'] ?? ''));
+        $flashAlert = render_alert(flash(), 'dashboard-alert');
+        if ($uploadNotice !== '') {
+            $flashAlert .= render_alert([
+                'message' => $uploadNotice,
+                'type' => 'success',
+            ], 'dashboard-alert');
+        }
 
         $this->renderAdminPage($user, 'leads', 'leads/pages/leads', [
             'title' => e('Leads'),
             'page_kicker' => e('Lead workspace'),
             'page_title' => e('Leads'),
             'page_description' => e('Search, filter, export, and review uploaded leads without leaving the page.'),
-            'flash_alert' => render_alert(flash(), 'dashboard-alert'),
+            'flash_alert' => $flashAlert,
             'page_action' => '',
             'upload_button_html' => $this->uploadButtonHtml(),
             'export_button_html' => $this->exportButtonHtml(),
             'leads_api_url' => e(app_url('api/leads')),
             'leads_export_url' => e(app_url('api/leads/export')),
+            'lead_push_status_url' => e(app_url('api/lead-push-job-status')),
             'lead_filters_json' => $this->jsonAttribute($filters),
             'lead_search_value' => e((string) ($filters['search'] ?? '')),
             'lead_date_from_value' => e($this->displayDateValue((string) ($filters['date_from'] ?? ''))),
@@ -105,6 +114,41 @@ final class DashboardController
         }
     }
 
+    public function leadPushJobStatus(): void
+    {
+        $this->guard();
+
+        $jobToken = trim((string) ($_GET['job_token'] ?? ''));
+        if ($jobToken === '') {
+            $this->jsonResponse([
+                'status' => 'error',
+                'message' => 'Job token is required.',
+            ], 422);
+        }
+
+        $job = $this->leadMapping->findJobByToken($jobToken);
+        if ($job === null) {
+            $this->jsonResponse([
+                'status' => 'error',
+                'message' => 'Lead push job not found.',
+            ], 404);
+        }
+
+        $this->jsonResponse([
+            'status' => 'success',
+            'data' => [
+                'job_token' => (string) ($job['job_token'] ?? ''),
+                'status' => (string) ($job['status'] ?? 'queued'),
+                'batch_size' => (int) ($job['batch_size'] ?? 0),
+                'total_leads' => (int) ($job['total_leads'] ?? 0),
+                'processed_leads' => (int) ($job['processed_leads'] ?? 0),
+                'total_requests' => (int) ($job['total_requests'] ?? 0),
+                'processed_requests' => (int) ($job['processed_requests'] ?? 0),
+                'success_count' => (int) ($job['success_count'] ?? 0),
+                'failed_count' => (int) ($job['failed_count'] ?? 0),
+            ],
+        ]);
+    }
     public function exportLeadsCsv(): void
     {
         $this->guard();
@@ -415,6 +459,8 @@ final class DashboardController
             'api_duration_total_leads' => e((string) count($rows)),
             'duration_defaults_attr_json' => $this->jsonAttribute($this->durationDefaults()),
             'save_duration_url' => e(app_url('leads/mapping/save-duration-settings.php')),
+            'lead_push_status_url' => e(app_url('api/lead-push-job-status')),
+            'leads_page_url' => e(app_url('leads')),
             'api_duration_card_visibility_class' => $selectedCollegeIds === [] ? 'd-none' : '',
             'api_duration_selection_value' => e((string) ($_SESSION['api_duration_selection'] ?? '0.35')),
             'mapping_step' => 'assign',
@@ -542,6 +588,8 @@ final class DashboardController
             'preview_selected_colleges' => e(implode(', ', (array) ($preview['colleges'] ?? []))),
             'confirm_mapping_url' => e(app_url('leads/mapping/confirm-mapping.php')),
             'save_duration_url' => e(app_url('leads/mapping/save-duration-settings.php')),
+            'lead_push_status_url' => e(app_url('api/lead-push-job-status')),
+            'leads_page_url' => e(app_url('leads')),
             'duration_defaults_attr_json' => $this->jsonAttribute($durationDefaults),
             'api_duration_total_leads' => e((string) ($preview['total'] ?? 0)),
             'lead_rows_attr_json' => $this->jsonAttribute((array) ($preview['data'] ?? [])),
@@ -658,6 +706,8 @@ final class DashboardController
             'region_summary_attr_json' => $this->jsonAttribute($this->summaryFromGroupedRows($this->leadMapping->groupRowsByRegion($rows))),
             'duration_defaults_attr_json' => $this->jsonAttribute($this->durationDefaults()),
             'save_duration_url' => e(app_url('leads/mapping/save-duration-settings.php')),
+            'lead_push_status_url' => e(app_url('api/lead-push-job-status')),
+            'leads_page_url' => e(app_url('leads')),
             'selected_college_names_attr_json' => $this->jsonAttribute($this->selectedCollegeNames($selectedCollegeIds)),
             'region_assignments_attr_json' => $this->jsonAttribute($assignments),
             'mapping_api_duration_url' => e(app_url('leads/mapping/api-duration')),
@@ -727,13 +777,14 @@ final class DashboardController
             );
 
             $this->leadMapping->spawnBackgroundJob((string) ($job['job_token'] ?? ''));
+            flash('Lead upload started successfully.', 'success');
 
             echo json_encode([
                 'status' => 'success',
                 'data' => [
                     'confirmation' => 'Duration settings saved successfully.',
                     'message' => 'API requests are being processed in the background.',
-                    'redirect' => app_url('leads'),
+                    'redirect' => app_url('leads?upload_notice=' . rawurlencode('Lead upload started successfully.')),
                     'job_token' => (string) ($job['job_token'] ?? ''),
                     'api_duration_selection' => $apiDurationSelection,
                 ],

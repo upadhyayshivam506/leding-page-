@@ -29,10 +29,25 @@ Use any PHP server that points to this folder, or run it through XAMPP/Apache.
 1. Copy this project into your XAMPP web root, for example `htdocs\leding-page-`.
 2. Make sure Apache is running in XAMPP.
 3. Start MySQL in XAMPP.
-4. Import `database/schema.sql` into phpMyAdmin or MySQL.
-5. Open `http://localhost/leding-page-/login`.
+4. Copy `.env.example` to `.env` and keep the local XAMPP values:
+
+```env
+DB_HOST="127.0.0.1"
+DB_PORT="3306"
+DB_NAME="lead_management"
+DB_USER="root"
+DB_PASSWORD=""
+DB_SOCKET=""
+SESSION_SAVE_PATH=""
+```
+
+5. Create the `lead_management` database.
+6. Import `database/schema.sql` into phpMyAdmin or MySQL.
+7. Open `http://localhost/leding-page-/login`.
 
 If Apache rewrite rules are enabled, the included `.htaccess` will route requests through `index.php`.
+
+On macOS XAMPP, this project now prefers the TCP host from `.env` and only uses a Unix socket when `DB_SOCKET` is explicitly set. That avoids connecting to the wrong local MySQL instance when both XAMPP and another MySQL server are installed.
 
 ### Built-in PHP server
 

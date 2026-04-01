@@ -1,6 +1,103 @@
 document.addEventListener('DOMContentLoaded', function () {
     var regionOrder = ['North', 'South', 'East', 'West / Others'];
     var defaultPreviewHeaders = ['Lead ID', 'Name', 'Email', 'Phone', 'Course', 'Specialization', 'Campus', 'College Name', 'City', 'State', 'Region'];
+    var globalToast = null;
+    var globalToastTimer = 0;
+    var pendingToastStorageKey = 'lead_upload_pending_toast';
+
+    function ensureGlobalToast() {
+        if (globalToast) {
+            return globalToast;
+        }
+
+        globalToast = document.createElement('div');
+        globalToast.setAttribute('role', 'status');
+        globalToast.setAttribute('aria-live', 'polite');
+        globalToast.style.position = 'fixed';
+        globalToast.style.right = '28px';
+        globalToast.style.bottom = '28px';
+        globalToast.style.zIndex = '1600';
+        globalToast.style.minWidth = '240px';
+        globalToast.style.maxWidth = 'min(360px, calc(100vw - 32px))';
+        globalToast.style.padding = '14px 18px';
+        globalToast.style.borderRadius = '16px';
+        globalToast.style.background = 'rgba(30, 160, 110, 0.96)';
+        globalToast.style.color = '#f8fffc';
+        globalToast.style.boxShadow = '0 18px 42px rgba(0, 0, 0, 0.32)';
+        globalToast.style.opacity = '0';
+        globalToast.style.pointerEvents = 'none';
+        globalToast.style.transform = 'translateY(12px)';
+        globalToast.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+        globalToast.style.fontWeight = '600';
+        document.body.appendChild(globalToast);
+
+        return globalToast;
+    }
+
+    function showGlobalToast(message) {
+        var toast = ensureGlobalToast();
+        if (!toast) {
+            return;
+        }
+
+        toast.textContent = message;
+        toast.style.opacity = '1';
+        toast.style.transform = 'translateY(0)';
+
+        if (globalToastTimer) {
+            window.clearTimeout(globalToastTimer);
+        }
+
+        globalToastTimer = window.setTimeout(function () {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(12px)';
+        }, 2600);
+    }
+
+    function queueToastForNextPage(message) {
+        try {
+            window.sessionStorage.setItem(pendingToastStorageKey, message);
+        } catch (error) {
+            return;
+        }
+    }
+
+    function flushQueuedToast() {
+        try {
+            var message = window.sessionStorage.getItem(pendingToastStorageKey);
+            if (!message) {
+                return;
+            }
+
+            window.sessionStorage.removeItem(pendingToastStorageKey);
+            window.setTimeout(function () {
+                showGlobalToast(message);
+            }, 150);
+        } catch (error) {
+            return;
+        }
+    }
+
+    function flushToastFromUrl() {
+        try {
+            var pageUrl = new URL(window.location.href);
+            var message = pageUrl.searchParams.get('upload_notice');
+            if (!message) {
+                return;
+            }
+
+            pageUrl.searchParams.delete('upload_notice');
+            window.history.replaceState({}, '', pageUrl.toString());
+            window.setTimeout(function () {
+                showGlobalToast(message);
+            }, 150);
+        } catch (error) {
+            return;
+        }
+    }
+
+    flushQueuedToast();
+    flushToastFromUrl();
 
     function readJsonAttribute(node, name) {
         if (!node) {
@@ -833,6 +930,13 @@ document.addEventListener('DOMContentLoaded', function () {
         var selectedCollegeList = apiDurationRoot.querySelector('[data-selected-college-list]');
         var colleagueCatalog = options.colleagueCatalog && typeof options.colleagueCatalog === 'object' ? options.colleagueCatalog : {};
         var selectedDurationValue = apiDurationRoot.getAttribute('data-api-duration-value') || '';
+        var jobStatusUrl = apiDurationRoot.getAttribute('data-job-status-url') || '';
+        var leadsPageUrl = apiDurationRoot.getAttribute('data-leads-page-url') || '/leads';
+        var activePollTimer = 0;
+        var nextLeadMilestone = 0;
+        var activeJobToken = '';
+        var completionAlertShown = false;
+        var lastAlertedLeadCount = 0;
 
         function deriveSelectedCollegeNames(assignments) {
             var names = [];
@@ -901,6 +1005,115 @@ document.addEventListener('DOMContentLoaded', function () {
             apiDurationMessage.classList.remove('d-none');
             apiDurationMessage.classList.toggle('mapping-preview-message--error', !!isError);
             apiDurationMessage.classList.toggle('mapping-preview-message--success', !isError);
+        }
+
+        function stopProgressPolling() {
+            if (activePollTimer) {
+                window.clearTimeout(activePollTimer);
+                activePollTimer = 0;
+            }
+        }
+
+        function showLeadUploadAlert(message) {
+            showGlobalToast(message);
+        }
+
+        function totalLeadCountForUpload() {
+            return Array.isArray(leadRows) && leadRows.length ? leadRows.length : totalLeadCount;
+        }
+
+        function buildLeadsRedirectUrl(message) {
+            var separator = leadsPageUrl.indexOf('?') === -1 ? '?' : '&';
+            return leadsPageUrl + separator + 'upload_notice=' + encodeURIComponent(message);
+        }
+
+        function scheduleNextMilestone(processedLeads, batchSize, totalLeads) {
+            if (batchSize <= 0 || totalLeads <= 0) {
+                nextLeadMilestone = 0;
+                return;
+            }
+
+            nextLeadMilestone = Math.min(totalLeads, Math.floor(processedLeads / batchSize + 1) * batchSize);
+            if (nextLeadMilestone <= 0) {
+                nextLeadMilestone = Math.min(batchSize, totalLeads);
+            }
+        }
+
+        function triggerMilestoneAlerts(processedLeads, batchSize, totalLeads) {
+            if (batchSize <= 0 || totalLeads <= 0) {
+                return;
+            }
+
+            if (nextLeadMilestone <= 0) {
+                nextLeadMilestone = Math.min(batchSize, totalLeads);
+            }
+
+            while (nextLeadMilestone > 0 && nextLeadMilestone < totalLeads && processedLeads >= nextLeadMilestone) {
+                showLeadUploadAlert(String(nextLeadMilestone) + ' leads uploaded.');
+                lastAlertedLeadCount = nextLeadMilestone;
+                nextLeadMilestone = Math.min(totalLeads, nextLeadMilestone + batchSize);
+            }
+        }
+
+        function finalizeLeadUpload(jobData) {
+            stopProgressPolling();
+            sendButton.disabled = false;
+            var processedLeadCount = Number(jobData && jobData.processed_leads != null ? jobData.processed_leads : 0);
+            var totalLeadCountValue = Number(jobData && jobData.total_leads != null ? jobData.total_leads : 0);
+
+            if (processedLeadCount > 0 && processedLeadCount !== lastAlertedLeadCount) {
+                showLeadUploadAlert(String(processedLeadCount) + ' leads uploaded.');
+                lastAlertedLeadCount = processedLeadCount;
+            }
+
+            if (!completionAlertShown) {
+                completionAlertShown = true;
+                showLeadUploadAlert('Successfully uploaded all leads.');
+            }
+
+            setApiMessage(
+                'Successfully uploaded all leads. ' +
+                String(processedLeadCount) +
+                ' of ' +
+                String(totalLeadCountValue) +
+                ' leads processed.',
+                false
+            );
+
+            window.setTimeout(function () {
+                queueToastForNextPage('Successfully uploaded all leads.');
+                window.location.href = buildLeadsRedirectUrl('Successfully uploaded all leads.');
+            }, 300);
+        }
+
+        function pollLeadUploadProgress() {
+            if (!jobStatusUrl || !activeJobToken) {
+                sendButton.disabled = false;
+                setApiMessage('Lead push started, but live progress is unavailable right now.', true);
+                return;
+            }
+
+            fetchJson(jobStatusUrl + '?job_token=' + encodeURIComponent(activeJobToken)).then(function (payload) {
+                var jobData = payload && payload.data ? payload.data : {};
+                var processedLeads = Number(jobData.processed_leads || 0);
+                var totalLeads = Number(jobData.total_leads || 0);
+                var batchSize = Number(jobData.batch_size || readBatchSize() || 0);
+                var status = String(jobData.status || 'queued');
+
+                triggerMilestoneAlerts(processedLeads, batchSize, totalLeads);
+                setApiMessage('Uploading leads... ' + String(processedLeads) + ' of ' + String(totalLeads) + ' leads completed.', false);
+
+                if (status === 'completed' || (totalLeads > 0 && processedLeads >= totalLeads)) {
+                    finalizeLeadUpload(jobData);
+                    return;
+                }
+
+                activePollTimer = window.setTimeout(pollLeadUploadProgress, 1000);
+            }).catch(function (error) {
+                stopProgressPolling();
+                sendButton.disabled = false;
+                setApiMessage(error.message || 'Unable to fetch upload progress.', true);
+            });
         }
 
         function updateDurationSummary() {
@@ -1006,7 +1219,14 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
 
                 sendButton.disabled = true;
+                showLeadUploadAlert(String(totalLeadCountForUpload()) + ' leads selected for upload.');
+                queueToastForNextPage(String(totalLeadCountForUpload()) + ' leads selected for upload.');
                 setApiMessage('Sending API requests in the configured batch flow...', false);
+                stopProgressPolling();
+                completionAlertShown = false;
+                activeJobToken = '';
+                lastAlertedLeadCount = 0;
+                scheduleNextMilestone(0, batchSize, totalLeadCountForUpload());
 
                 fetchJson(apiDurationRoot.getAttribute('data-save-duration-url'), {
                     method: 'POST',
@@ -1026,11 +1246,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 }).then(function (payload) {
                     var successMessage = payload.data && payload.data.confirmation ? payload.data.confirmation : 'Duration settings saved successfully.';
                     var redirectMessage = payload.data && payload.data.message ? payload.data.message : 'API requests are being processed in the background.';
-                    setApiMessage(successMessage + ' ' + redirectMessage, false);
-                    setTimeout(function () {
-                        window.location.href = payload.data && payload.data.redirect ? payload.data.redirect : '/leads';
-                    }, 400);
+                    activeJobToken = payload.data && payload.data.job_token ? String(payload.data.job_token) : '';
+                    setApiMessage(successMessage + ' ' + redirectMessage + ' Waiting for live progress...', false);
+                    pollLeadUploadProgress();
                 }).catch(function (error) {
+                    stopProgressPolling();
                     sendButton.disabled = false;
                     setApiMessage(error.message || 'Unable to save duration settings.', true);
                 });

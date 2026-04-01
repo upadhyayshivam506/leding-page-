@@ -62,6 +62,7 @@ final class LeadMappingService
                 status VARCHAR(50) NOT NULL DEFAULT "queued",
                 total_leads INT NOT NULL DEFAULT 0,
                 total_requests INT NOT NULL DEFAULT 0,
+                processed_leads INT NOT NULL DEFAULT 0,
                 processed_requests INT NOT NULL DEFAULT 0,
                 success_count INT NOT NULL DEFAULT 0,
                 failed_count INT NOT NULL DEFAULT 0,
@@ -76,6 +77,8 @@ final class LeadMappingService
                 KEY lead_mapping_jobs_status_index (status)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
         );
+
+        $this->ensureLeadMappingJobsColumns($connection);
 
         $connection->exec(
             'CREATE TABLE IF NOT EXISTS lead_api_logs (
@@ -424,7 +427,7 @@ final class LeadMappingService
             throw new RuntimeException('Background runner file is missing.');
         }
 
-        $phpBinary = defined('PHP_BINARY') && PHP_BINARY !== '' ? PHP_BINARY : 'php';
+        $phpBinary = $this->resolvePhpBinary();
         $phpBinary = escapeshellarg($phpBinary);
         $runnerArg = escapeshellarg($runner);
         $tokenArg = escapeshellarg($jobToken);
@@ -435,6 +438,38 @@ final class LeadMappingService
         }
 
         exec($phpBinary . ' ' . $runnerArg . ' ' . $tokenArg . ' > /dev/null 2>&1 &');
+    }
+
+    private function resolvePhpBinary(): string
+    {
+        $candidates = [];
+
+        $configured = getenv('APP_PHP_BINARY');
+        if (is_string($configured) && trim($configured) !== '') {
+            $candidates[] = trim($configured);
+        }
+
+        if (defined('PHP_BINARY') && is_string(PHP_BINARY) && PHP_BINARY !== '') {
+            $candidates[] = PHP_BINARY;
+        }
+
+        $candidates = array_merge($candidates, [
+            '/Applications/XAMPP/xamppfiles/bin/php',
+            '/Applications/XAMPP/bin/php',
+            'php',
+        ]);
+
+        foreach ($candidates as $candidate) {
+            if ($candidate === 'php') {
+                return $candidate;
+            }
+
+            if (is_file($candidate) && is_executable($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return 'php';
     }
 
     public function runQueuedJob(string $jobToken): void
@@ -497,6 +532,8 @@ final class LeadMappingService
                     $result = $this->retryLeadSend($lead, $college, $requestKey, $mappingConfigurationId, $jobToken, $batchId);
                     $this->incrementJobCounters($jobToken, $result['success']);
                 }
+
+                $this->incrementProcessedLeads($jobToken);
             }
 
             if ($batchIndex < count($batches) - 1 && $delay > 0) {
@@ -905,6 +942,40 @@ final class LeadMappingService
             'failed_increment' => $success ? 0 : 1,
             'job_token' => $jobToken,
         ]);
+    }
+
+    private function incrementProcessedLeads(string $jobToken): void
+    {
+        $statement = Database::connection()->prepare(
+            'UPDATE lead_mapping_jobs
+             SET processed_leads = processed_leads + 1
+             WHERE job_token = :job_token'
+        );
+        $statement->execute([
+            'job_token' => $jobToken,
+        ]);
+    }
+
+    private function ensureLeadMappingJobsColumns(PDO $connection): void
+    {
+        $statement = $connection->prepare(
+            'SELECT COUNT(*)
+             FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME = :table_name
+               AND COLUMN_NAME = :column_name'
+        );
+        $statement->execute([
+            'table_name' => 'lead_mapping_jobs',
+            'column_name' => 'processed_leads',
+        ]);
+
+        if ((int) $statement->fetchColumn() === 0) {
+            $connection->exec(
+                'ALTER TABLE lead_mapping_jobs
+                 ADD COLUMN processed_leads INT NOT NULL DEFAULT 0 AFTER total_requests'
+            );
+        }
     }
 
     private function hasSuccessfulLog(string $requestKey): bool
