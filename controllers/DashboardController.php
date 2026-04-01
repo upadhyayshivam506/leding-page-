@@ -42,20 +42,136 @@ final class DashboardController
     public function leads(): void
     {
         $user = $this->guard();
-        $leadData = $this->leadDataForView(current_page_number(), self::TABLE_PAGE_SIZE);
+        $filters = $this->leadFiltersFromRequest();
+        $leadData = $this->leadDataForView($filters, current_page_number(), self::TABLE_PAGE_SIZE);
+        $filterOptions = $this->leadFilterOptions();
 
         $this->renderAdminPage($user, 'leads', 'leads/pages/leads', [
             'title' => e('Leads'),
             'page_kicker' => e('Lead workspace'),
             'page_title' => e('Leads'),
-            'page_description' => e('Upload lead files, save mapped rows into MySQL, and review the stored leads from the database.'),
+            'page_description' => e('Search, filter, export, and review uploaded leads without leaving the page.'),
             'flash_alert' => render_alert(flash(), 'dashboard-alert'),
-            'page_action' => $this->uploadButtonHtml(),
+            'page_action' => '',
+            'upload_button_html' => $this->uploadButtonHtml(),
+            'export_button_html' => $this->exportButtonHtml(),
+            'leads_api_url' => e(app_url('api/leads')),
+            'leads_export_url' => e(app_url('api/leads/export')),
+            'lead_filters_json' => $this->jsonAttribute($filters),
+            'lead_search_value' => e((string) ($filters['search'] ?? '')),
+            'lead_date_from_value' => e($this->displayDateValue((string) ($filters['date_from'] ?? ''))),
+            'lead_date_to_value' => e($this->displayDateValue((string) ($filters['date_to'] ?? ''))),
+            'course_filter_options_html' => $this->multiSelectOptionsHtml($filterOptions['course'] ?? [], $filters['course'] ?? []),
+            'state_filter_options_html' => $this->multiSelectOptionsHtml($filterOptions['state'] ?? [], $filters['state'] ?? []),
+            'city_filter_options_html' => $this->multiSelectOptionsHtml($filterOptions['city'] ?? [], $filters['city'] ?? []),
+            'lead_origin_filter_options_html' => $this->multiSelectOptionsHtml($filterOptions['lead_origin'] ?? [], $filters['lead_origin'] ?? []),
+            'campaign_filter_options_html' => $this->multiSelectOptionsHtml($filterOptions['campaign'] ?? [], $filters['campaign'] ?? []),
+            'lead_stage_filter_options_html' => $this->multiSelectOptionsHtml($filterOptions['lead_stage'] ?? [], $filters['lead_stage'] ?? []),
+            'lead_status_filter_options_html' => $this->multiSelectOptionsHtml($filterOptions['lead_status'] ?? [], $filters['lead_status'] ?? []),
+            'form_initiated_filter_options_html' => $this->multiSelectOptionsHtml($filterOptions['form_initiated'] ?? [], $filters['form_initiated'] ?? []),
+            'paid_apps_filter_options_html' => $this->multiSelectOptionsHtml($filterOptions['paid_apps'] ?? [], $filters['paid_apps'] ?? []),
             'main_table_head_html' => $leadData['table_head_html'],
             'main_table_body_html' => $leadData['table_body_html'],
             'main_table_pagination_html' => $leadData['pagination_html'],
             'main_table_count_label' => e($leadData['count_label']),
         ]);
+    }
+
+    public function leadsApi(): void
+    {
+        $this->guard();
+
+        try {
+            $filters = $this->leadFiltersFromRequest();
+            $this->validateLeadDateRange($filters);
+            $page = current_page_number();
+            $limit = $this->leadLimitFromRequest();
+            $leadData = $this->leadDataForView($filters, $page, $limit);
+
+            $this->jsonResponse([
+                'status' => 'success',
+                'data' => [
+                    'table_head_html' => $leadData['table_head_html'],
+                    'table_body_html' => $leadData['table_body_html'],
+                    'pagination_html' => $leadData['pagination_html'],
+                    'count_label' => $leadData['count_label'],
+                ],
+            ]);
+        } catch (RuntimeException $exception) {
+            $this->jsonResponse([
+                'status' => 'error',
+                'message' => $exception->getMessage() !== '' ? $exception->getMessage() : 'Unable to load leads.',
+            ], 422);
+        }
+    }
+
+    public function exportLeadsCsv(): void
+    {
+        $this->guard();
+
+        try {
+            $filters = $this->leadFiltersFromRequest();
+            $this->validateLeadDateRange($filters);
+            $rows = $this->leads->exportByFilters($filters);
+            $filename = 'leads_export_' . date('Y-m-d_H-i') . '.csv';
+
+            header('Content-Type: text/csv; charset=UTF-8');
+            header('Content-Disposition: attachment; filename="' . $filename . '"');
+            header('Pragma: no-cache');
+            header('Expires: 0');
+
+            $output = fopen('php://output', 'wb');
+            if ($output === false) {
+                throw new RuntimeException('Unable to create the export file.');
+            }
+
+            fwrite($output, chr(0xEF) . chr(0xBB) . chr(0xBF));
+            fputcsv($output, [
+                'batch_id',
+                'lead_id',
+                'name',
+                'email',
+                'phone',
+                'course',
+                'state',
+                'city',
+                'lead_origin',
+                'campaign',
+                'lead_stage',
+                'lead_status',
+                'form_initiated',
+                'paid_apps',
+                'created_at',
+            ]);
+
+            foreach ($rows as $row) {
+                fputcsv($output, [
+                    (string) ($row['batch_id'] ?? ''),
+                    (string) ($row['lead_id'] ?? ''),
+                    (string) ($row['name'] ?? ''),
+                    (string) ($row['email'] ?? ''),
+                    (string) ($row['phone'] ?? ''),
+                    (string) ($row['course'] ?? ''),
+                    (string) ($row['state'] ?? ''),
+                    (string) ($row['city'] ?? ''),
+                    (string) ($row['lead_origin'] ?? ''),
+                    (string) ($row['campaign'] ?? ''),
+                    (string) ($row['lead_stage'] ?? ''),
+                    (string) ($row['lead_status'] ?? ''),
+                    (string) ($row['form_initiated'] ?? ''),
+                    (string) ($row['paid_apps'] ?? ''),
+                    (string) ($row['created_at'] ?? ''),
+                ]);
+            }
+
+            fclose($output);
+            exit;
+        } catch (RuntimeException $exception) {
+            http_response_code(422);
+            header('Content-Type: text/plain; charset=UTF-8');
+            echo $exception->getMessage() !== '' ? $exception->getMessage() : 'Unable to export leads.';
+            exit;
+        }
     }
 
     public function leadPushLogs(): void
@@ -201,6 +317,8 @@ final class DashboardController
             'page_action' => '<a href="' . e(app_url('leads/mapping')) . '" class="panel-link topbar-action-link">Back</a>',
             'uploaded_file_name' => e((string) ($upload['original_name'] ?? '')),
             'uploaded_file_time' => e((string) ($upload['uploaded_at'] ?? '')),
+            'uploaded_file_type' => e((string) ($upload['extension'] ?? '')),
+            'uploaded_file_size' => e(number_format(((int) ($upload['size'] ?? 0)) / 1024, 2) . ' KB'),
             'main_table_head_html' => $regionTable['table_head_html'],
             'main_table_body_html' => $regionTable['table_body_html'],
             'main_table_pagination_html' => $regionTable['pagination_html'],
@@ -678,19 +796,24 @@ final class DashboardController
         return '<form action="' . e(app_url('leads/upload')) . '" method="post" enctype="multipart/form-data" class="upload-form" data-upload-form>'
             . '<input type="hidden" name="parsed_rows_json" value="" data-upload-rows-json>'
             . '<input type="hidden" name="parsed_headers_json" value="" data-upload-headers-json>'
-            . '<label class="panel-link topbar-action-link upload-trigger">Upload Excel File<input type="file" name="lead_file" accept=".xls,.xlsx,.csv" class="d-none" data-upload-input></label>'
+            . '<label class="panel-link topbar-action-link upload-trigger leads-action-button">Upload Excel File<input type="file" name="lead_file" accept=".xls,.xlsx,.csv" class="d-none" data-upload-input></label>'
             . '</form>';
     }
 
-    private function leadDataForView(int $currentPage, int $recordsPerPage): array
+    private function exportButtonHtml(): string
+    {
+        return '<button type="button" class="panel-link topbar-action-link leads-action-button" data-export-leads>Export</button>';
+    }
+
+    private function leadDataForView(array $filters, int $currentPage, int $recordsPerPage): array
     {
         $headers = $this->leadListHeaders();
 
         try {
-            $totalRecords = $this->leads->countAll();
+            $totalRecords = $this->leads->countByFilters($filters);
             if ($totalRecords > 0) {
                 $pagination = pagination_state($totalRecords, $recordsPerPage, $currentPage);
-                $rows = $this->mapLeadListRows($this->leads->paginate($pagination['records_per_page'], $pagination['offset']));
+                $rows = $this->mapLeadListRows($this->leads->paginateByFilters($filters, $pagination['records_per_page'], $pagination['offset']));
 
                 return $this->buildTableFromPagination(
                     $headers,
@@ -704,22 +827,22 @@ final class DashboardController
         } catch (PDOException) {
             return $this->buildTableView(
                 $headers,
-                $this->uploadedLeadData()['rows'],
+                [],
                 $currentPage,
                 $recordsPerPage,
                 'leads',
-                'Upload a lead file to see lead rows here.',
+                'No leads matched the current search and filters.',
                 'leads'
             );
         }
 
         return $this->buildTableView(
             $headers,
-            $this->uploadedLeadData()['rows'],
+            [],
             $currentPage,
             $recordsPerPage,
             'leads',
-            'Upload a lead file to see lead rows here.',
+            'No leads matched the current search and filters.',
             'leads'
         );
     }
@@ -935,6 +1058,12 @@ final class DashboardController
                 'Campus' => $this->firstValue($rawRow, ['campus', 'college_campus']),
                 'College Name' => $this->firstValue($rawRow, ['college_name', 'college']),
                 'City' => $this->firstValue($rawRow, ['city']),
+                'Lead Origin' => $this->firstValue($rawRow, ['lead_origin', 'origin', 'source', 'lead_source']),
+                'Campaign' => $this->firstValue($rawRow, ['campaign', 'campaign_name', 'utm_campaign']),
+                'Lead Stage' => $this->firstValue($rawRow, ['lead_stage', 'stage']),
+                'Lead Status' => $this->firstValue($rawRow, ['lead_status', 'status']),
+                'Form Initiated' => $this->firstValue($rawRow, ['form_initiated', 'form_started']),
+                'Paid Apps' => $this->firstValue($rawRow, ['paid_apps', 'paid_application', 'paid_applications']),
                 'State' => $this->firstValue($rawRow, ['state', 'province']),
             ];
 
@@ -1000,6 +1129,12 @@ final class DashboardController
                 'campus' => (string) ($row['Campus'] ?? ''),
                 'college_name' => (string) ($row['College Name'] ?? ''),
                 'city' => (string) ($row['City'] ?? ''),
+                'lead_origin' => (string) ($row['Lead Origin'] ?? ''),
+                'campaign' => (string) ($row['Campaign'] ?? ''),
+                'lead_stage' => (string) ($row['Lead Stage'] ?? ''),
+                'lead_status' => (string) ($row['Lead Status'] ?? ''),
+                'form_initiated' => (string) ($row['Form Initiated'] ?? ''),
+                'paid_apps' => (string) ($row['Paid Apps'] ?? ''),
                 'state' => (string) ($row['State'] ?? ''),
                 'region' => (string) ($row['Region'] ?? 'West / Others'),
             ];
@@ -1008,7 +1143,7 @@ final class DashboardController
 
     private function leadListHeaders(): array
     {
-        return ['Batch ID', 'Lead ID', 'Name', 'Email', 'Phone', 'Course', 'Specialization', 'Campus', 'College Name', 'City', 'State', 'Region', 'Source File', 'Created At'];
+        return ['Batch ID', 'Lead ID', 'Name', 'Email', 'Phone', 'Course', 'State', 'City', 'Lead Origin', 'Campaign', 'Lead Stage', 'Lead Status', 'Form Initiated', 'Paid Apps', 'Created At'];
     }
 
     private function batchLeadHeaders(): array
@@ -1031,13 +1166,14 @@ final class DashboardController
                 'Email' => (string) ($row['email'] ?? ''),
                 'Phone' => (string) ($row['phone'] ?? ''),
                 'Course' => (string) ($row['course'] ?? ''),
-                'Specialization' => (string) ($row['specialization'] ?? ''),
-                'Campus' => (string) ($row['campus'] ?? ''),
-                'College Name' => (string) ($row['college_name'] ?? ''),
-                'City' => (string) ($row['city'] ?? ''),
                 'State' => (string) ($row['state'] ?? ''),
-                'Region' => (string) ($row['region'] ?? ''),
-                'Source File' => (string) ($row['source_file'] ?? ''),
+                'City' => (string) ($row['city'] ?? ''),
+                'Lead Origin' => (string) ($row['lead_origin'] ?? ''),
+                'Campaign' => (string) ($row['campaign'] ?? ''),
+                'Lead Stage' => (string) ($row['lead_stage'] ?? ''),
+                'Lead Status' => (string) ($row['lead_status'] ?? ''),
+                'Form Initiated' => (string) ($row['form_initiated'] ?? ''),
+                'Paid Apps' => (string) ($row['paid_apps'] ?? ''),
                 'Created At' => (string) ($row['created_at'] ?? ''),
             ];
         }, $rows);
@@ -1092,6 +1228,142 @@ final class DashboardController
                 'Created At' => (string) ($row['created_at'] ?? ''),
             ];
         }, $rows);
+    }
+
+    private function leadFiltersFromRequest(): array
+    {
+        return [
+            'search' => trim((string) ($_GET['search'] ?? '')),
+            'course' => $this->csvValues($_GET['course'] ?? ''),
+            'state' => $this->csvValues($_GET['state'] ?? ''),
+            'city' => $this->csvValues($_GET['city'] ?? ''),
+            'lead_origin' => $this->csvValues($_GET['lead_origin'] ?? ''),
+            'campaign' => $this->csvValues($_GET['campaign'] ?? ''),
+            'lead_stage' => $this->csvValues($_GET['lead_stage'] ?? ''),
+            'lead_status' => $this->csvValues($_GET['lead_status'] ?? ''),
+            'form_initiated' => $this->csvValues($_GET['form_initiated'] ?? ''),
+            'paid_apps' => $this->csvValues($_GET['paid_apps'] ?? ''),
+            'date_from' => trim((string) ($_GET['date_from'] ?? '')),
+            'date_to' => trim((string) ($_GET['date_to'] ?? '')),
+        ];
+    }
+
+    private function leadFilterOptions(): array
+    {
+        $defaults = [
+            'course' => [],
+            'state' => [],
+            'city' => [],
+            'lead_origin' => [],
+            'campaign' => [],
+            'lead_stage' => [],
+            'lead_status' => [],
+            'form_initiated' => [],
+            'paid_apps' => [],
+        ];
+
+        try {
+            return array_merge($defaults, $this->leads->filterOptions());
+        } catch (PDOException) {
+            return $defaults;
+        }
+    }
+
+    private function csvValues(mixed $value): array
+    {
+        if (is_array($value)) {
+            $values = $value;
+        } else {
+            $raw = trim((string) $value);
+            $values = $raw === '' ? [] : explode(',', $raw);
+        }
+
+        return array_values(array_unique(array_filter(array_map(
+            static fn ($item): string => trim((string) $item),
+            $values
+        ), static fn (string $item): bool => $item !== '')));
+    }
+
+    private function multiSelectOptionsHtml(array $options, array $selectedValues): string
+    {
+        $selectedLookup = array_fill_keys($selectedValues, true);
+        $html = [];
+
+        foreach ($options as $option) {
+            $value = trim((string) $option);
+            if ($value === '') {
+                continue;
+            }
+
+            $selected = isset($selectedLookup[$value]) ? ' selected' : '';
+            $html[] = '<option value="' . e($value) . '"' . $selected . '>' . e($value) . '</option>';
+        }
+
+        return implode('', $html);
+    }
+
+    private function displayDateValue(string $value): string
+    {
+        $normalized = $this->normalizeDateString($value);
+        if ($normalized === null) {
+            return trim($value);
+        }
+
+        $date = \DateTimeImmutable::createFromFormat('Y-m-d', $normalized);
+
+        return $date instanceof \DateTimeImmutable ? $date->format('d-m-Y') : trim($value);
+    }
+
+    private function normalizeDateString(string $value): ?string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return null;
+        }
+
+        foreach (['Y-m-d', 'd-m-Y'] as $format) {
+            $date = \DateTimeImmutable::createFromFormat($format, $value);
+            if ($date instanceof \DateTimeImmutable && $date->format($format) === $value) {
+                return $date->format('Y-m-d');
+            }
+        }
+
+        return null;
+    }
+
+    private function leadLimitFromRequest(): int
+    {
+        $limit = filter_input(INPUT_GET, 'limit', FILTER_VALIDATE_INT);
+
+        return min(200, max(1, (int) ($limit ?: self::TABLE_PAGE_SIZE)));
+    }
+
+    private function validateLeadDateRange(array $filters): void
+    {
+        $dateFromRaw = trim((string) ($filters['date_from'] ?? ''));
+        $dateToRaw = trim((string) ($filters['date_to'] ?? ''));
+        $dateFrom = $this->normalizeDateString($dateFromRaw);
+        $dateTo = $this->normalizeDateString($dateToRaw);
+
+        if ($dateFromRaw !== '' && $dateFrom === null) {
+            throw new RuntimeException('Use dd-mm-yyyy for the From date.');
+        }
+
+        if ($dateToRaw !== '' && $dateTo === null) {
+            throw new RuntimeException('Use dd-mm-yyyy for the To date.');
+        }
+
+        if ($dateFrom !== null && $dateTo !== null && $dateFrom > $dateTo) {
+            throw new RuntimeException('The From date cannot be later than the To date.');
+        }
+    }
+
+    private function jsonResponse(array $payload, int $statusCode = 200): void
+    {
+        http_response_code($statusCode);
+        header('Content-Type: application/json');
+        echo json_encode($payload);
+        exit;
     }
 
     private function buildTableView(
@@ -1527,6 +1799,23 @@ final class DashboardController
             'system_config_active' => $activePage === 'system-config' ? 'is-active' : '',
             'flash_alert' => '',
             'page_action' => '',
+            'upload_button_html' => '',
+            'export_button_html' => '',
+            'leads_api_url' => e(app_url('api/leads')),
+            'leads_export_url' => e(app_url('api/leads/export')),
+            'lead_filters_json' => '[]',
+            'lead_search_value' => '',
+            'lead_date_from_value' => '',
+            'lead_date_to_value' => '',
+            'course_filter_options_html' => '',
+            'state_filter_options_html' => '',
+            'city_filter_options_html' => '',
+            'lead_origin_filter_options_html' => '',
+            'campaign_filter_options_html' => '',
+            'lead_stage_filter_options_html' => '',
+            'lead_status_filter_options_html' => '',
+            'form_initiated_filter_options_html' => '',
+            'paid_apps_filter_options_html' => '',
             'uploaded_file_name' => '',
             'uploaded_file_time' => '',
             'uploaded_file_type' => '',

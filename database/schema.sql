@@ -11,6 +11,12 @@ CREATE TABLE `leads` (
   `campus` VARCHAR(190) DEFAULT NULL,
   `college_name` VARCHAR(190) DEFAULT NULL,
   `city` VARCHAR(120) DEFAULT NULL,
+  `lead_origin` VARCHAR(190) DEFAULT NULL,
+  `campaign` VARCHAR(190) DEFAULT NULL,
+  `lead_stage` VARCHAR(190) DEFAULT NULL,
+  `lead_status` VARCHAR(190) DEFAULT NULL,
+  `form_initiated` VARCHAR(50) DEFAULT NULL,
+  `paid_apps` VARCHAR(50) DEFAULT NULL,
   `state` VARCHAR(120) DEFAULT NULL,
   `region` VARCHAR(50) NOT NULL,
   `source_file` VARCHAR(255) DEFAULT NULL,
@@ -20,7 +26,17 @@ CREATE TABLE `leads` (
   PRIMARY KEY (`id`),
   KEY `leads_batch_id_index` (`batch_id`),
   KEY `leads_region_index` (`region`),
-  KEY `leads_lead_id_index` (`lead_id`)
+  KEY `leads_lead_id_index` (`lead_id`),
+  KEY `leads_created_at_index` (`created_at`),
+  KEY `leads_course_index` (`course`),
+  KEY `leads_state_index` (`state`),
+  KEY `leads_city_index` (`city`),
+  KEY `leads_lead_origin_index` (`lead_origin`),
+  KEY `leads_campaign_index` (`campaign`),
+  KEY `leads_lead_stage_index` (`lead_stage`),
+  KEY `leads_lead_status_index` (`lead_status`),
+  KEY `leads_form_initiated_index` (`form_initiated`),
+  KEY `leads_paid_apps_index` (`paid_apps`)
 
 ) ENGINE=InnoDB 
 DEFAULT CHARSET=utf8mb4 

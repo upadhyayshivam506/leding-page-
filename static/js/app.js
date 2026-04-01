@@ -158,6 +158,377 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    function debounce(callback, wait) {
+        var timeoutId = 0;
+
+        return function () {
+            var args = arguments;
+            clearTimeout(timeoutId);
+            timeoutId = window.setTimeout(function () {
+                callback.apply(null, args);
+            }, wait);
+        };
+    }
+
+    function parseDisplayDate(value) {
+        var trimmed = String(value || '').trim();
+        if (!trimmed) {
+            return { valid: true, normalized: '', raw: '' };
+        }
+
+        var match = trimmed.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+        if (!match) {
+            return { valid: false, message: 'Use dd-mm-yyyy for date filters.' };
+        }
+
+        var day = Number(match[1]);
+        var month = Number(match[2]);
+        var year = Number(match[3]);
+        var date = new Date(year, month - 1, day);
+
+        if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+            return { valid: false, message: 'Enter a valid calendar date in dd-mm-yyyy format.' };
+        }
+
+        return {
+            valid: true,
+            normalized: String(year).padStart(4, '0') + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0'),
+            raw: trimmed
+        };
+    }
+
+    var leadsPageRoot = document.querySelector('[data-leads-page]');
+    if (leadsPageRoot) {
+        var leadsFilterForm = document.querySelector('[data-leads-filter-form]');
+        var leadsTableRoot = document.querySelector('[data-leads-table-root]');
+        var leadsTableHead = document.querySelector('[data-leads-table-head]');
+        var leadsTableBody = document.querySelector('[data-leads-table-body]');
+        var leadsPagination = document.querySelector('[data-leads-pagination]');
+        var leadsCount = document.querySelector('[data-leads-count]');
+        var leadsLoading = document.querySelector('[data-leads-loading]');
+        var leadsFilterMessage = document.querySelector('[data-leads-filter-message]');
+        var leadsSearchInput = leadsFilterForm ? leadsFilterForm.querySelector('[data-filter-search]') : null;
+        var leadsDateFromInput = leadsFilterForm ? leadsFilterForm.querySelector('[data-filter-date-from]') : null;
+        var leadsDateToInput = leadsFilterForm ? leadsFilterForm.querySelector('[data-filter-date-to]') : null;
+        var leadsResetButton = leadsFilterForm ? leadsFilterForm.querySelector('[data-leads-reset]') : null;
+        var exportButton = document.querySelector('[data-export-leads]');
+        var multiselects = leadsFilterForm ? Array.from(leadsFilterForm.querySelectorAll('[data-filter-multiselect]')) : [];
+        var apiUrl = leadsPageRoot.getAttribute('data-leads-api-url') || '/api/leads';
+        var exportUrl = leadsPageRoot.getAttribute('data-leads-export-url') || '/api/leads/export';
+        var currentPage = Number(new URL(window.location.href).searchParams.get('page') || '1');
+        var latestRequestId = 0;
+        var isResetting = false;
+
+        function setLeadMessage(message, isError) {
+            if (!leadsFilterMessage) {
+                return;
+            }
+
+            if (!message) {
+                leadsFilterMessage.textContent = '';
+                leadsFilterMessage.classList.add('d-none');
+                leadsFilterMessage.classList.remove('leads-filter-message--error', 'leads-filter-message--success');
+                return;
+            }
+
+            leadsFilterMessage.textContent = message;
+            leadsFilterMessage.classList.remove('d-none');
+            leadsFilterMessage.classList.toggle('leads-filter-message--error', !!isError);
+            leadsFilterMessage.classList.toggle('leads-filter-message--success', !isError);
+        }
+
+        function setLeadsLoading(isLoading) {
+            if (leadsLoading) {
+                leadsLoading.classList.toggle('d-none', !isLoading);
+            }
+            if (leadsTableRoot) {
+                leadsTableRoot.classList.toggle('is-loading', !!isLoading);
+            }
+        }
+
+        function updateSelectionSummary(select) {
+            if (!select) {
+                return;
+            }
+
+            var container = select.nextElementSibling;
+            var rendered = container ? container.querySelector('.select2-selection__rendered') : null;
+            if (!rendered) {
+                return;
+            }
+
+            var count = selectValues(select).length;
+            rendered.setAttribute('data-selection-summary', String(count) + ' selected');
+            rendered.classList.add('leads-select2-rendered');
+        }
+
+        function initLeadMultiselect(select) {
+            if (!select) {
+                return;
+            }
+
+            if (window.jQuery && window.jQuery.fn && typeof window.jQuery.fn.select2 === 'function') {
+                window.jQuery(select).select2({
+                    width: '100%',
+                    placeholder: select.getAttribute('data-placeholder') || 'Select options',
+                    allowClear: true,
+                    closeOnSelect: false
+                });
+
+                window.jQuery(select).on('change', function () {
+                    updateSelectionSummary(select);
+                    if (!isResetting) {
+                        currentPage = 1;
+                        debouncedLeadsFetch();
+                    }
+                });
+            } else {
+                select.addEventListener('change', function () {
+                    if (!isResetting) {
+                        currentPage = 1;
+                        debouncedLeadsFetch();
+                    }
+                });
+            }
+
+            updateSelectionSummary(select);
+        }
+
+        function readLeadState(page) {
+            return {
+                search: leadsSearchInput ? leadsSearchInput.value.trim() : '',
+                course: multiselects[0] ? selectValues(multiselects[0]) : [],
+                state: multiselects[1] ? selectValues(multiselects[1]) : [],
+                city: multiselects[2] ? selectValues(multiselects[2]) : [],
+                lead_origin: multiselects[3] ? selectValues(multiselects[3]) : [],
+                campaign: multiselects[4] ? selectValues(multiselects[4]) : [],
+                lead_stage: multiselects[5] ? selectValues(multiselects[5]) : [],
+                lead_status: multiselects[6] ? selectValues(multiselects[6]) : [],
+                form_initiated: multiselects[7] ? selectValues(multiselects[7]) : [],
+                paid_apps: multiselects[8] ? selectValues(multiselects[8]) : [],
+                date_from: leadsDateFromInput ? leadsDateFromInput.value.trim() : '',
+                date_to: leadsDateToInput ? leadsDateToInput.value.trim() : '',
+                page: Math.max(1, Number(page || currentPage || 1)),
+                limit: 20
+            };
+        }
+
+        function validateLeadState(state) {
+            var from = parseDisplayDate(state.date_from);
+            var to = parseDisplayDate(state.date_to);
+            if (!from.valid) {
+                return from;
+            }
+            if (!to.valid) {
+                return to;
+            }
+            if (from.normalized && to.normalized && from.normalized > to.normalized) {
+                return { valid: false, message: 'The From date cannot be later than the To date.' };
+            }
+
+            return { valid: true };
+        }
+
+        function buildLeadQuery(state, includePaging) {
+            var params = new URLSearchParams();
+
+            if (state.search) {
+                params.set('search', state.search);
+            }
+
+            ['course', 'state', 'city', 'lead_origin', 'campaign', 'lead_stage', 'lead_status', 'form_initiated', 'paid_apps'].forEach(function (key) {
+                if (Array.isArray(state[key]) && state[key].length) {
+                    params.set(key, state[key].join(','));
+                }
+            });
+
+            if (state.date_from) {
+                params.set('date_from', state.date_from);
+            }
+            if (state.date_to) {
+                params.set('date_to', state.date_to);
+            }
+
+            if (includePaging !== false) {
+                params.set('page', String(Math.max(1, Number(state.page || 1))));
+                params.set('limit', String(state.limit || 20));
+            }
+
+            return params;
+        }
+
+        function syncLeadUrl(state) {
+            var pageUrl = new URL(window.location.href);
+            pageUrl.search = buildLeadQuery(state, true).toString();
+            window.history.replaceState({}, '', pageUrl.toString());
+        }
+
+        function requestLeads(page) {
+            var state = readLeadState(page);
+            var validation = validateLeadState(state);
+            if (!validation.valid) {
+                setLeadMessage(validation.message || 'Please correct the selected filters.', true);
+                return Promise.resolve();
+            }
+
+            setLeadMessage('', false);
+            currentPage = state.page;
+            latestRequestId += 1;
+            var requestId = latestRequestId;
+            setLeadsLoading(true);
+
+            return fetchJson(apiUrl + '?' + buildLeadQuery(state, true).toString()).then(function (payload) {
+                if (requestId !== latestRequestId) {
+                    return;
+                }
+
+                if (leadsTableHead && payload.data && payload.data.table_head_html) {
+                    leadsTableHead.innerHTML = payload.data.table_head_html;
+                }
+                if (leadsTableBody) {
+                    leadsTableBody.innerHTML = payload.data && payload.data.table_body_html ? payload.data.table_body_html : '';
+                }
+                if (leadsPagination) {
+                    leadsPagination.innerHTML = payload.data && payload.data.pagination_html ? payload.data.pagination_html : '';
+                }
+                if (leadsCount) {
+                    leadsCount.textContent = payload.data && payload.data.count_label ? payload.data.count_label : '0 leads';
+                }
+
+                syncLeadUrl(state);
+            }).catch(function (error) {
+                setLeadMessage(error.message || 'Unable to load leads right now.', true);
+            }).finally(function () {
+                if (requestId === latestRequestId) {
+                    setLeadsLoading(false);
+                }
+            });
+        }
+
+        var debouncedLeadsFetch = debounce(function () {
+            requestLeads(1);
+        }, 400);
+
+        if (leadsFilterForm) {
+            leadsFilterForm.addEventListener('submit', function (event) {
+                event.preventDefault();
+                requestLeads(1);
+            });
+        }
+
+        if (leadsSearchInput) {
+            leadsSearchInput.addEventListener('input', function () {
+                currentPage = 1;
+                debouncedLeadsFetch();
+            });
+        }
+
+        [leadsDateFromInput, leadsDateToInput].forEach(function (input) {
+            if (!input) {
+                return;
+            }
+
+            input.addEventListener('change', function () {
+                currentPage = 1;
+                requestLeads(1);
+            });
+            input.addEventListener('blur', function () {
+                currentPage = 1;
+                requestLeads(1);
+            });
+        });
+
+        if (leadsResetButton) {
+            leadsResetButton.addEventListener('click', function () {
+                isResetting = true;
+
+                if (leadsSearchInput) {
+                    leadsSearchInput.value = '';
+                }
+                if (leadsDateFromInput) {
+                    leadsDateFromInput.value = '';
+                }
+                if (leadsDateToInput) {
+                    leadsDateToInput.value = '';
+                }
+
+                multiselects.forEach(function (select) {
+                    if (window.jQuery && window.jQuery.fn && typeof window.jQuery.fn.select2 === 'function') {
+                        window.jQuery(select).val(null).trigger('change');
+                    } else {
+                        Array.from(select.options).forEach(function (option) {
+                            option.selected = false;
+                        });
+                    }
+                    updateSelectionSummary(select);
+                });
+
+                isResetting = false;
+                currentPage = 1;
+                requestLeads(1);
+            });
+        }
+
+        if (leadsPagination) {
+            leadsPagination.addEventListener('click', function (event) {
+                var target = event.target.closest('a.table-page-btn');
+                if (!target) {
+                    return;
+                }
+
+                event.preventDefault();
+                var url = new URL(target.href, window.location.origin);
+                var page = Number(url.searchParams.get('page') || '1');
+                requestLeads(page);
+            });
+        }
+
+        if (exportButton) {
+            exportButton.addEventListener('click', function () {
+                var state = readLeadState(1);
+                var validation = validateLeadState(state);
+                if (!validation.valid) {
+                    setLeadMessage(validation.message || 'Please correct the selected filters before exporting.', true);
+                    return;
+                }
+
+                setLeadMessage('', false);
+                exportButton.disabled = true;
+
+                fetch(exportUrl + '?' + buildLeadQuery(state, false).toString(), {
+                    credentials: 'same-origin'
+                }).then(function (response) {
+                    if (!response.ok) {
+                        return response.text().then(function (text) {
+                            throw new Error(text || 'Unable to export leads.');
+                        });
+                    }
+
+                    var disposition = response.headers.get('Content-Disposition') || '';
+                    var match = disposition.match(/filename=\"?([^\";]+)\"?/i);
+                    var filename = match && match[1] ? match[1] : 'leads_export.csv';
+
+                    return response.blob().then(function (blob) {
+                        var blobUrl = window.URL.createObjectURL(blob);
+                        var link = document.createElement('a');
+                        link.href = blobUrl;
+                        link.download = filename;
+                        document.body.appendChild(link);
+                        link.click();
+                        link.remove();
+                        window.URL.revokeObjectURL(blobUrl);
+                    });
+                }).catch(function (error) {
+                    setLeadMessage(error.message || 'Unable to export leads right now.', true);
+                }).finally(function () {
+                    exportButton.disabled = false;
+                });
+            });
+        }
+
+        multiselects.forEach(initLeadMultiselect);
+    }
+
     var regionMappingRoot = document.querySelector('[data-region-mapping-page]');
     if (regionMappingRoot) {
         var regionRows = readJsonAttribute(regionMappingRoot, 'data-region-rows');

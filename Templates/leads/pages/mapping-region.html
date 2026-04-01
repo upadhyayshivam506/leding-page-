@@ -11,9 +11,22 @@
 </section>
 
 <section class="mapping-region-page" data-region-mapping-page data-api-colleagues-url="{{mapping_api_url}}" data-region-rows="{{region_rows_attr_json}}" data-region-summary="{{region_summary_attr_json}}">
+    <div class="mapping-region-section-head">
+        <h3>Region Summary</h3>
+        <p class="table-subtext">Region-wise grouping of leads is ready for mapping.</p>
+    </div>
+    <div class="mapping-region-summary" data-region-summary-cards></div>
+
+    <div class="mapping-region-section-head">
+        <h3>Region Lead Preview</h3>
+        <p class="table-subtext">First 8 leads shown for quick review on all devices.</p>
+    </div>
+    <section class="region-groups" data-region-groups></section>
+
     <article class="table-panel mapping-table-panel">
         <div class="panel-head panel-head--table">
             <div>
+                <h3>Region Mapping Table</h3>
                 <p class="table-subtext">This page now uses the same paginated table pattern as Leads, Preview, and Logs.</p>
             </div>
             <span class="panel-chip">{{main_table_count_label}}</span>
@@ -27,14 +40,8 @@
         {{main_table_pagination_html}}
     </article>
 
-    <div class="mapping-actions mapping-actions--footer">
+    <div class="mapping-actions mapping-actions--footer mapping-region-actions-row">
         <a href="{{mapping_region_courses_url}}" class="btn dashboard-logout">Specialization Courses Mapping</a>
-    </div>
-
-    <div class="mapping-region-summary" data-region-summary-cards></div>
-    <section class="region-groups" data-region-groups></section>
-
-    <div class="mapping-actions mapping-actions--footer">
         <button type="button" class="btn dashboard-logout" data-confirm-region-redirect>Continue to Assign Colleagues</button>
     </div>
 </section>

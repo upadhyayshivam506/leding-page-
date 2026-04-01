@@ -1,21 +1,162 @@
-<section class="page-heading">
-    <p class="hero-label">{{page_kicker}}</p>
-    <h2>{{page_title}}</h2>
+<section
+    class="page-heading page-heading--leads"
+    data-leads-page
+    data-leads-api-url="{{leads_api_url}}"
+    data-leads-export-url="{{leads_export_url}}"
+    data-initial-filters="{{lead_filters_json}}"
+>
+    <div class="leads-header">
+        <div>
+            <p class="hero-label">{{page_kicker}}</p>
+            <h2>{{page_title}}</h2>
+        </div>
+        <div class="leads-header__actions">
+            {{upload_button_html}}
+            {{export_button_html}}
+        </div>
+    </div>
 </section>
 
-<section class="table-panel leads-table-panel">
+<section class="table-panel leads-filters-panel">
     <div class="panel-head panel-head--table">
         <div>
-            <h3>Lead Summary Table</h3>
-            <p class="table-subtext">Lead records are shown with a shared, server-side pagination system across the project.</p>
+            <h3>Find Leads</h3>
+            <p class="table-subtext">Search across lead details and combine filters without reloading the page.</p>
         </div>
-        <span class="panel-chip">{{main_table_count_label}}</span>
     </div>
-    <div class="table-responsive">
-        <table class="table admin-table align-middle mb-0">
-            <thead>{{main_table_head_html}}</thead>
-            <tbody>{{main_table_body_html}}</tbody>
-        </table>
+    <form class="leads-filters-form" data-leads-filter-form>
+        <div class="leads-filters-grid leads-filters-grid--search">
+            <label class="leads-filter-field leads-filter-field--search">
+                <span class="form-label">Search</span>
+                <input
+                    type="search"
+                    name="search"
+                    class="form-control leads-filter-input"
+                    placeholder="Search leads..."
+                    value="{{lead_search_value}}"
+                    autocomplete="off"
+                    data-filter-search
+                >
+            </label>
+        </div>
+
+        <div class="leads-filters-grid">
+            <label class="leads-filter-field">
+                <span class="form-label">Course</span>
+                <select name="course" class="leads-filter-select" multiple data-filter-multiselect data-placeholder="Course">
+                    {{course_filter_options_html}}
+                </select>
+            </label>
+
+            <label class="leads-filter-field">
+                <span class="form-label">State</span>
+                <select name="state" class="leads-filter-select" multiple data-filter-multiselect data-placeholder="State">
+                    {{state_filter_options_html}}
+                </select>
+            </label>
+
+            <label class="leads-filter-field">
+                <span class="form-label">City</span>
+                <select name="city" class="leads-filter-select" multiple data-filter-multiselect data-placeholder="City">
+                    {{city_filter_options_html}}
+                </select>
+            </label>
+
+            <label class="leads-filter-field">
+                <span class="form-label">Lead Origin</span>
+                <select name="lead_origin" class="leads-filter-select" multiple data-filter-multiselect data-placeholder="Lead Origin">
+                    {{lead_origin_filter_options_html}}
+                </select>
+            </label>
+
+            <label class="leads-filter-field">
+                <span class="form-label">Campaign</span>
+                <select name="campaign" class="leads-filter-select" multiple data-filter-multiselect data-placeholder="Campaign">
+                    {{campaign_filter_options_html}}
+                </select>
+            </label>
+
+            <label class="leads-filter-field">
+                <span class="form-label">Lead Stage</span>
+                <select name="lead_stage" class="leads-filter-select" multiple data-filter-multiselect data-placeholder="Lead Stage">
+                    {{lead_stage_filter_options_html}}
+                </select>
+            </label>
+
+            <label class="leads-filter-field">
+                <span class="form-label">Lead Status</span>
+                <select name="lead_status" class="leads-filter-select" multiple data-filter-multiselect data-placeholder="Lead Status">
+                    {{lead_status_filter_options_html}}
+                </select>
+            </label>
+
+            <label class="leads-filter-field">
+                <span class="form-label">Form Initiated</span>
+                <select name="form_initiated" class="leads-filter-select" multiple data-filter-multiselect data-placeholder="Form Initiated">
+                    {{form_initiated_filter_options_html}}
+                </select>
+            </label>
+
+            <label class="leads-filter-field">
+                <span class="form-label">Paid Apps</span>
+                <select name="paid_apps" class="leads-filter-select" multiple data-filter-multiselect data-placeholder="Paid Apps">
+                    {{paid_apps_filter_options_html}}
+                </select>
+            </label>
+        </div>
+
+        <div class="leads-filters-grid leads-filters-grid--dates">
+            <label class="leads-filter-field">
+                <span class="form-label">From</span>
+                <input
+                    type="text"
+                    name="date_from"
+                    class="form-control leads-filter-input"
+                    placeholder="dd-mm-yyyy"
+                    value="{{lead_date_from_value}}"
+                    inputmode="numeric"
+                    data-filter-date-from
+                >
+            </label>
+
+            <label class="leads-filter-field">
+                <span class="form-label">To</span>
+                <input
+                    type="text"
+                    name="date_to"
+                    class="form-control leads-filter-input"
+                    placeholder="dd-mm-yyyy"
+                    value="{{lead_date_to_value}}"
+                    inputmode="numeric"
+                    data-filter-date-to
+                >
+            </label>
+
+            <div class="leads-filter-actions">
+                <button type="button" class="btn btn-outline-light leads-reset-button" data-leads-reset>Clear Filters</button>
+            </div>
+        </div>
+
+        <p class="leads-filter-message d-none" data-leads-filter-message role="status" aria-live="polite"></p>
+    </form>
+</section>
+
+<section class="table-panel leads-table-panel" data-leads-table-root>
+    <div class="panel-head panel-head--table">
+        <div>
+            <h3>Leads Summary Table</h3>
+            <p class="table-subtext">Server-side search, filters, and pagination stay in sync while you browse the full leads dataset.</p>
+        </div>
+        <span class="panel-chip" data-leads-count>{{main_table_count_label}}</span>
     </div>
-    {{main_table_pagination_html}}
+    <div class="leads-table-shell">
+        <div class="leads-table-loading d-none" data-leads-loading aria-hidden="true">Updating leads...</div>
+        <div class="table-responsive" data-leads-table-responsive>
+            <table class="table admin-table align-middle mb-0">
+                <thead data-leads-table-head>{{main_table_head_html}}</thead>
+                <tbody data-leads-table-body>{{main_table_body_html}}</tbody>
+            </table>
+        </div>
+    </div>
+    <div data-leads-pagination>{{main_table_pagination_html}}</div>
 </section>

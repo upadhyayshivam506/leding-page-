@@ -12,6 +12,8 @@ return [
     'POST /logout' => [AuthController::class, 'logout'],
     'GET /dashboard' => [DashboardController::class, 'index'],
     'GET /leads' => [DashboardController::class, 'leads'],
+    'GET /api/leads' => [DashboardController::class, 'leadsApi'],
+    'GET /api/leads/export' => [DashboardController::class, 'exportLeadsCsv'],
     'GET /lead-push-logs' => [DashboardController::class, 'leadPushLogs'],
     'POST /leads/upload' => [DashboardController::class, 'uploadLeadFile'],
     'GET /leads/mapping' => [DashboardController::class, 'mapping'],
