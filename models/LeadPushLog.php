@@ -44,6 +44,23 @@ final class LeadPushLog
         return is_array($rows) ? $rows : [];
     }
 
+    public function findByBatch(string $batchId): array
+    {
+        $statement = Database::connection()->prepare(
+            'SELECT id, batch_id, lead_id, name, email, phone, course, specialization, campus, college_name, city, state, region, source_file, status, response, attempt_no, created_at
+             FROM lead_api_logs
+             WHERE batch_id = :batch_id
+             ORDER BY created_at DESC, id DESC'
+        );
+        $statement->execute([
+            'batch_id' => $batchId,
+        ]);
+
+        $rows = $statement->fetchAll(PDO::FETCH_ASSOC);
+
+        return is_array($rows) ? $rows : [];
+    }
+
     public function countAll(): int
     {
         $statement = Database::connection()->query('SELECT COUNT(*) FROM lead_api_logs');

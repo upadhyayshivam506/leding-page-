@@ -15,51 +15,78 @@
         <a href="{{mapping_region_url}}" class="btn dashboard-logout">Back to Region Mapping</a>
     </div>
 
-    <article class="table-panel mapping-table-panel">
-        <div class="panel-head panel-head--table">
+    <section class="assignment-page__section">
+        <div class="mapping-region-section-head assignment-page__section-head">
             <div>
-                <h3>Assignment Lead Preview</h3>
-                <p class="table-subtext">Lead rows stay paginated here so large assignment batches remain easy to scan.</p>
+                <h3>Assign Colleagues by Region</h3>
+                <p class="table-subtext">Review each region card first, then choose colleagues where leads are available.</p>
             </div>
-            <span class="panel-chip">{{main_table_count_label}}</span>
         </div>
-        <div class="table-responsive">
-            <table class="table admin-table align-middle mb-0">
-                <thead>{{main_table_head_html}}</thead>
-                <tbody>{{main_table_body_html}}</tbody>
-            </table>
-        </div>
-        {{main_table_pagination_html}}
-    </article>
 
-    <article class="table-panel mapping-table-panel">
-        <div class="panel-head panel-head--table">
-            <div>
+        <section class="assignment-grid" data-assignment-grid></section>
+
+        <p class="mapping-preview-message d-none assignment-page__message" data-assign-message></p>
+
+        <div class="mapping-actions mapping-actions--footer assignment-page__footer">
+            <button type="button" class="btn dashboard-logout" data-confirm-assign>Confirm &amp; Assign</button>
+        </div>
+    </section>
+
+    <section class="assignment-page__section">
+        <div class="mapping-region-section-head assignment-page__section-head">
+            <!-- <div>
                 <h3>Region Summary</h3>
-                <p class="table-subtext">All regions stay visible, including regions with 0 leads, so colleagues can still be assigned.</p>
+                <p class="table-subtext">All regions stay visible, including regions with 0 leads, so assignment coverage is easy to verify.</p>
+            </div> -->
+        </div>
+
+        <article class="table-panel mapping-table-panel">
+            <div class="panel-head panel-head--table">
+                <div>
+                    <h3>Region Summary Card</h3>
+                    <p class="table-subtext">Region totals refresh directly from the current assignment page context.</p>
+                </div>
+                <span class="panel-chip">Summary</span>
             </div>
-            <span class="panel-chip">Summary</span>
+            <div class="table-responsive">
+                <table class="table admin-table align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Region</th>
+                            <th>Total Leads</th>
+                        </tr>
+                    </thead>
+                    <tbody data-region-summary-body></tbody>
+                </table>
+            </div>
+        </article>
+    </section>
+
+    <section class="assignment-page__section">
+        <div class="mapping-region-section-head assignment-page__section-head">
+            <!-- <div>
+                <h3>Assignment Lead Preview</h3>
+                <p class="table-subtext">Preview rows stay below the summary so we can validate selections against the actual uploaded leads.</p>
+            </div> -->
         </div>
-        <div class="table-responsive">
-            <table class="table admin-table align-middle mb-0">
-                <thead>
-                    <tr>
-                        <th>Region</th>
-                        <th>Total Leads</th>
-                    </tr>
-                </thead>
-                <tbody data-region-summary-body></tbody>
-            </table>
-        </div>
-    </article>
 
-    <section class="assignment-grid" data-assignment-grid></section>
-
-    <p class="mapping-preview-message d-none" data-assign-message></p>
-
-    <div class="mapping-actions mapping-actions--footer">
-        <button type="button" class="btn dashboard-logout" data-confirm-assign>Confirm &amp; Assign</button>
-    </div>
+        <article class="table-panel mapping-table-panel">
+            <div class="panel-head panel-head--table">
+                <div>
+                    <h3>Assignment Lead Preview</h3>
+                    <p class="table-subtext">Lead rows stay paginated here so large assignment batches remain easy to scan.</p>
+                </div>
+                <span class="panel-chip">{{main_table_count_label}}</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table admin-table align-middle mb-0">
+                    <thead>{{main_table_head_html}}</thead>
+                    <tbody>{{main_table_body_html}}</tbody>
+                </table>
+            </div>
+            {{main_table_pagination_html}}
+        </article>
+    </section>
 
     <article class="info-panel assignment-duration-panel {{api_duration_card_visibility_class}}" data-api-duration-page data-total-leads="{{api_duration_total_leads}}" data-duration-defaults="{{duration_defaults_attr_json}}" data-save-duration-url="{{save_duration_url}}" data-job-status-url="{{lead_push_status_url}}" data-leads-page-url="{{leads_page_url}}" data-selected-colleges="{{selected_college_names_attr_json}}" data-region-assignments="{{region_assignments_attr_json}}" data-region-summary="{{region_summary_attr_json}}" data-leads-data="{{lead_rows_attr_json}}" data-api-duration-value="{{api_duration_selection_value}}">
         <p class="hero-label">Next Configuration</p>

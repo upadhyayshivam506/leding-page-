@@ -312,9 +312,16 @@ document.addEventListener('DOMContentLoaded', function () {
         var multiselects = leadsFilterForm ? Array.from(leadsFilterForm.querySelectorAll('[data-filter-multiselect]')) : [];
         var apiUrl = leadsPageRoot.getAttribute('data-leads-api-url') || '/api/leads';
         var exportUrl = leadsPageRoot.getAttribute('data-leads-export-url') || '/api/leads/export';
+        var leadPushStatusUrl = leadsPageRoot.getAttribute('data-lead-push-status-url') || '';
         var currentPage = Number(new URL(window.location.href).searchParams.get('page') || '1');
         var latestRequestId = 0;
         var isResetting = false;
+        var leadUploadProgressPanel = document.querySelector('[data-lead-upload-progress-panel]');
+        var leadUploadProgressTitle = document.querySelector('[data-lead-upload-progress-title]');
+        var leadUploadProgressText = document.querySelector('[data-lead-upload-progress-text]');
+        var leadUploadProgressChip = document.querySelector('[data-lead-upload-progress-chip]');
+        var leadUploadProgressBar = document.querySelector('[data-lead-upload-progress-bar]');
+        var activeLeadPushTimer = 0;
 
         function setLeadMessage(message, isError) {
             if (!leadsFilterMessage) {
@@ -341,6 +348,108 @@ document.addEventListener('DOMContentLoaded', function () {
             if (leadsTableRoot) {
                 leadsTableRoot.classList.toggle('is-loading', !!isLoading);
             }
+        }
+
+        function setLeadUploadPanelState(title, text, chip, progressPercent, stateClass) {
+            if (!leadUploadProgressPanel) {
+                return;
+            }
+
+            leadUploadProgressPanel.classList.remove('d-none', 'is-processing', 'is-completed', 'is-partial', 'is-failed');
+            leadUploadProgressPanel.classList.add(stateClass || 'is-processing');
+
+            if (leadUploadProgressTitle) {
+                leadUploadProgressTitle.textContent = title;
+            }
+            if (leadUploadProgressText) {
+                leadUploadProgressText.textContent = text;
+            }
+            if (leadUploadProgressChip) {
+                leadUploadProgressChip.textContent = chip;
+            }
+            if (leadUploadProgressBar) {
+                leadUploadProgressBar.style.width = String(Math.max(0, Math.min(100, Number(progressPercent || 0)))) + '%';
+            }
+        }
+
+        function clearLeadPushQueryParams() {
+            try {
+                var pageUrl = new URL(window.location.href);
+                pageUrl.searchParams.delete('lead_push_job_token');
+                pageUrl.searchParams.delete('lead_push_total');
+                window.history.replaceState({}, '', pageUrl.toString());
+            } catch (error) {
+                return;
+            }
+        }
+
+        function stopLeadPushPolling() {
+            if (activeLeadPushTimer) {
+                window.clearTimeout(activeLeadPushTimer);
+                activeLeadPushTimer = 0;
+            }
+        }
+
+        function pollLeadPushProgress(jobToken, fallbackTotal) {
+            if (!leadPushStatusUrl || !jobToken) {
+                return;
+            }
+
+            fetchJson(leadPushStatusUrl + '?job_token=' + encodeURIComponent(jobToken)).then(function (payload) {
+                var jobData = payload && payload.data ? payload.data : {};
+                var fileStatus = String(jobData.file_status || jobData.status || 'Processing');
+                var totalLeads = Number(jobData.total_leads || fallbackTotal || 0);
+                var processedLeads = Number(jobData.processed_leads || 0);
+                var progressPercent = totalLeads > 0 ? (processedLeads / totalLeads) * 100 : 0;
+                var progressText = 'Uploading leads... ' + String(processedLeads) + ' of ' + String(totalLeads) + ' leads completed.';
+                var stateClass = 'is-processing';
+                var title = 'Uploading leads...';
+                var chip = 'Processing';
+
+                if (fileStatus === 'Completed') {
+                    progressPercent = 100;
+                    title = 'Lead upload completed';
+                    chip = 'Completed';
+                    progressText = String(processedLeads) + ' of ' + String(totalLeads) + ' leads completed successfully.';
+                    stateClass = 'is-completed';
+                } else if (fileStatus === 'Partial') {
+                    progressPercent = 100;
+                    title = 'Lead upload completed with partial failures';
+                    chip = 'Partial';
+                    progressText = String(processedLeads) + ' of ' + String(totalLeads) + ' leads processed. Some API requests failed.';
+                    stateClass = 'is-partial';
+                } else if (fileStatus === 'Failed') {
+                    progressPercent = totalLeads > 0 ? progressPercent : 100;
+                    title = 'Lead upload failed';
+                    chip = 'Failed';
+                    progressText = 'The API push failed for this upload batch.';
+                    stateClass = 'is-failed';
+                }
+
+                setLeadUploadPanelState(title, progressText, chip, progressPercent, stateClass);
+
+                if (fileStatus === 'Completed' || fileStatus === 'Partial' || fileStatus === 'Failed') {
+                    stopLeadPushPolling();
+                    window.setTimeout(clearLeadPushQueryParams, 300);
+                    return;
+                }
+
+                activeLeadPushTimer = window.setTimeout(function () {
+                    pollLeadPushProgress(jobToken, totalLeads || fallbackTotal);
+                }, 1000);
+            }).catch(function () {
+                setLeadUploadPanelState(
+                    'Uploading leads...',
+                    'Waiting for live progress updates from the background job...',
+                    'Processing',
+                    4,
+                    'is-processing'
+                );
+
+                activeLeadPushTimer = window.setTimeout(function () {
+                    pollLeadPushProgress(jobToken, fallbackTotal);
+                }, 2000);
+            });
         }
 
         function updateSelectionSummary(select) {
@@ -621,6 +730,25 @@ document.addEventListener('DOMContentLoaded', function () {
                     exportButton.disabled = false;
                 });
             });
+        }
+
+        try {
+            var leadPageUrl = new URL(window.location.href);
+            var activeJobToken = leadPageUrl.searchParams.get('lead_push_job_token') || '';
+            var activeJobTotal = Number(leadPageUrl.searchParams.get('lead_push_total') || '0');
+
+            if (activeJobToken) {
+                setLeadUploadPanelState(
+                    'Uploading leads...',
+                    'Uploading leads... 0 of ' + String(activeJobTotal) + ' leads completed.',
+                    'Processing',
+                    0,
+                    'is-processing'
+                );
+                pollLeadPushProgress(activeJobToken, activeJobTotal);
+            }
+        } catch (error) {
+            // Ignore URL parsing issues and keep the page working.
         }
 
         multiselects.forEach(initLeadMultiselect);
@@ -1247,8 +1375,12 @@ document.addEventListener('DOMContentLoaded', function () {
                     var successMessage = payload.data && payload.data.confirmation ? payload.data.confirmation : 'Duration settings saved successfully.';
                     var redirectMessage = payload.data && payload.data.message ? payload.data.message : 'API requests are being processed in the background.';
                     activeJobToken = payload.data && payload.data.job_token ? String(payload.data.job_token) : '';
-                    setApiMessage(successMessage + ' ' + redirectMessage + ' Waiting for live progress...', false);
-                    pollLeadUploadProgress();
+                    setApiMessage(successMessage + ' ' + redirectMessage + ' Redirecting to Leads...', false);
+                    window.setTimeout(function () {
+                        window.location.href = payload.data && payload.data.redirect
+                            ? payload.data.redirect
+                            : leadsPageUrl;
+                    }, 250);
                 }).catch(function (error) {
                     stopProgressPolling();
                     sendButton.disabled = false;
@@ -1527,6 +1659,70 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
             });
         }
+    }
+
+    var dashboardUploadHistoryRoot = document.querySelector('[data-dashboard-upload-history]');
+    if (dashboardUploadHistoryRoot) {
+        var dashboardHistoryUrl = dashboardUploadHistoryRoot.getAttribute('data-dashboard-upload-history-url') || '';
+        var dashboardPollTimer = 0;
+
+        function updateDashboardUploadHistory(payload) {
+            var data = payload && payload.data ? payload.data : {};
+            var totalUploadedFiles = dashboardUploadHistoryRoot.querySelector('[data-dashboard-total-uploaded-files]');
+            var totalLeads = dashboardUploadHistoryRoot.querySelector('[data-dashboard-total-leads]');
+            var leadsSent = dashboardUploadHistoryRoot.querySelector('[data-dashboard-leads-sent]');
+            var failedLeads = dashboardUploadHistoryRoot.querySelector('[data-dashboard-failed-leads]');
+            var successRate = document.querySelector('[data-dashboard-success-rate]');
+            var uploadActivity = document.querySelector('[data-dashboard-upload-activity]');
+            var processingStatus = document.querySelector('[data-dashboard-processing-status]');
+            var recentUploads = document.querySelector('[data-dashboard-recent-uploads]');
+
+            if (totalUploadedFiles && data.total_uploaded_files != null) {
+                totalUploadedFiles.textContent = String(data.total_uploaded_files);
+            }
+            if (totalLeads && data.total_leads != null) {
+                totalLeads.textContent = String(data.total_leads);
+            }
+            if (leadsSent && data.leads_sent != null) {
+                leadsSent.textContent = String(data.leads_sent);
+            }
+            if (failedLeads && data.failed_leads != null) {
+                failedLeads.textContent = String(data.failed_leads);
+            }
+            if (successRate && data.processing_success_rate != null) {
+                successRate.textContent = String(data.processing_success_rate);
+            }
+            if (uploadActivity && data.upload_activity_bars_html != null) {
+                uploadActivity.innerHTML = String(data.upload_activity_bars_html);
+            }
+            if (processingStatus && data.processing_status_rows_html != null) {
+                processingStatus.innerHTML = String(data.processing_status_rows_html);
+            }
+            if (recentUploads && data.recent_uploaded_files_rows_html != null) {
+                recentUploads.innerHTML = String(data.recent_uploaded_files_rows_html);
+            }
+        }
+
+        function pollDashboardUploadHistory() {
+            if (!dashboardHistoryUrl) {
+                return;
+            }
+
+            fetchJson(dashboardHistoryUrl).then(function (payload) {
+                updateDashboardUploadHistory(payload);
+                dashboardPollTimer = window.setTimeout(pollDashboardUploadHistory, 5000);
+            }).catch(function () {
+                dashboardPollTimer = window.setTimeout(pollDashboardUploadHistory, 10000);
+            });
+        }
+
+        pollDashboardUploadHistory();
+
+        window.addEventListener('beforeunload', function () {
+            if (dashboardPollTimer) {
+                window.clearTimeout(dashboardPollTimer);
+            }
+        });
     }
 
     document.querySelectorAll('[data-api-duration-page]').forEach(function (root) {

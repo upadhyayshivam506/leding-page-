@@ -7,6 +7,7 @@ namespace Models;
 use Config\Database;
 use PDO;
 use PDOException;
+use Services\LeadSchemaService;
 
 final class Lead
 {
@@ -22,14 +23,17 @@ final class Lead
         'form_initiated',
         'paid_apps',
     ];
-    private const SEARCH_COLUMNS = ['name', 'email', 'phone', 'course', 'city', 'campaign'];
-    private const LIST_COLUMNS = 'id, batch_id, lead_id, name, email, phone, course, specialization, campus, college_name, city, state, region, source_file, lead_origin, campaign, lead_stage, lead_status, form_initiated, paid_apps, created_at';
-    private const EXPORT_COLUMNS = 'batch_id, lead_id, name, email, phone, course, state, city, lead_origin, campaign, lead_stage, lead_status, form_initiated, paid_apps, created_at';
+    private const SEARCH_COLUMNS = ['name', 'email', 'mobile', 'phone', 'course', 'city', 'campaign', 'college', 'college_name'];
+    private const LIST_COLUMNS = 'id, batch_id, lead_id, status, name, email, mobile, phone, course, state, city, lead_score, lead_origin, campaign, lead_stage, lead_status, country, instance, instance_date, email_verification, mobile_verification, device, specialization, campus, last_activity, form_initiated, paid_apps, enrollment, college, college_name, region, source_file, schema_json, created_at';
+    private const EXPORT_COLUMNS = 'batch_id, lead_id, status, name, email, mobile, phone, course, state, city, lead_score, lead_origin, campaign, lead_stage, lead_status, country, instance, instance_date, email_verification, mobile_verification, device, specialization, campus, last_activity, form_initiated, paid_apps, enrollment, college, college_name, region, source_file, schema_json, created_at';
 
     private static bool $schemaEnsured = false;
 
+    private readonly LeadSchemaService $schema;
+
     public function __construct()
     {
+        $this->schema = new LeadSchemaService();
         $this->ensureSchema();
     }
 
@@ -41,7 +45,7 @@ final class Lead
              ORDER BY created_at DESC, id DESC'
         );
 
-        $rows = $statement->fetchAll();
+        $rows = $statement->fetchAll(PDO::FETCH_ASSOC);
 
         return is_array($rows) ? $rows : [];
     }
@@ -58,7 +62,7 @@ final class Lead
         $statement->bindValue(':offset', max(0, $offset), PDO::PARAM_INT);
         $statement->execute();
 
-        $rows = $statement->fetchAll();
+        $rows = $statement->fetchAll(PDO::FETCH_ASSOC);
 
         return is_array($rows) ? $rows : [];
     }
@@ -157,9 +161,9 @@ final class Lead
         $connection = Database::connection();
         $statement = $connection->prepare(
             'INSERT INTO leads (
-                batch_id, lead_id, name, email, phone, course, specialization, campus, college_name, city, lead_origin, campaign, lead_stage, lead_status, form_initiated, paid_apps, state, region, source_file
+                batch_id, lead_id, status, name, email, mobile, phone, course, state, city, lead_score, lead_origin, campaign, lead_stage, lead_status, country, instance, instance_date, email_verification, mobile_verification, device, specialization, campus, last_activity, form_initiated, paid_apps, enrollment, college, college_name, region, source_file, schema_json
              ) VALUES (
-                :batch_id, :lead_id, :name, :email, :phone, :course, :specialization, :campus, :college_name, :city, :lead_origin, :campaign, :lead_stage, :lead_status, :form_initiated, :paid_apps, :state, :region, :source_file
+                :batch_id, :lead_id, :status, :name, :email, :mobile, :phone, :course, :state, :city, :lead_score, :lead_origin, :campaign, :lead_stage, :lead_status, :country, :instance, :instance_date, :email_verification, :mobile_verification, :device, :specialization, :campus, :last_activity, :form_initiated, :paid_apps, :enrollment, :college, :college_name, :region, :source_file, :schema_json
              )'
         );
 
@@ -172,26 +176,40 @@ final class Lead
                     continue;
                 }
 
+                $payload = $this->schema->databaseRowFromSchema($row);
                 $statement->execute([
                     'batch_id' => $batchId,
-                    'lead_id' => $this->stringOrNull($row['lead_id'] ?? null),
-                    'name' => $this->stringOrNull($row['name'] ?? null),
-                    'email' => $this->stringOrNull($row['email'] ?? null),
-                    'phone' => $this->stringOrNull($row['phone'] ?? null),
-                    'course' => $this->stringOrNull($row['course'] ?? null),
-                    'specialization' => $this->stringOrNull($row['specialization'] ?? null),
-                    'campus' => $this->stringOrNull($row['campus'] ?? null),
-                    'college_name' => $this->stringOrNull($row['college_name'] ?? null),
-                    'city' => $this->stringOrNull($row['city'] ?? null),
-                    'lead_origin' => $this->stringOrNull($row['lead_origin'] ?? null),
-                    'campaign' => $this->stringOrNull($row['campaign'] ?? null),
-                    'lead_stage' => $this->stringOrNull($row['lead_stage'] ?? null),
-                    'lead_status' => $this->stringOrNull($row['lead_status'] ?? null),
-                    'form_initiated' => $this->stringOrNull($row['form_initiated'] ?? null),
-                    'paid_apps' => $this->stringOrNull($row['paid_apps'] ?? null),
-                    'state' => $this->stringOrNull($row['state'] ?? null),
-                    'region' => $this->normalizeRegion((string) ($row['region'] ?? 'West / Others')),
+                    'lead_id' => $this->stringOrNull($payload['lead_id'] ?? null),
+                    'status' => $this->stringOrNull($payload['status'] ?? null),
+                    'name' => $this->stringOrNull($payload['name'] ?? null),
+                    'email' => $this->stringOrNull($payload['email'] ?? null),
+                    'mobile' => $this->stringOrNull($payload['mobile'] ?? null),
+                    'phone' => $this->stringOrNull($payload['phone'] ?? null),
+                    'course' => $this->stringOrNull($payload['course'] ?? null),
+                    'state' => $this->stringOrNull($payload['state'] ?? null),
+                    'city' => $this->stringOrNull($payload['city'] ?? null),
+                    'lead_score' => $this->stringOrNull($payload['lead_score'] ?? null),
+                    'lead_origin' => $this->stringOrNull($payload['lead_origin'] ?? null),
+                    'campaign' => $this->stringOrNull($payload['campaign'] ?? null),
+                    'lead_stage' => $this->stringOrNull($payload['lead_stage'] ?? null),
+                    'lead_status' => $this->stringOrNull($payload['lead_status'] ?? null),
+                    'country' => $this->stringOrNull($payload['country'] ?? null),
+                    'instance' => $this->stringOrNull($payload['instance'] ?? null),
+                    'instance_date' => $this->stringOrNull($payload['instance_date'] ?? null),
+                    'email_verification' => $this->stringOrNull($payload['email_verification'] ?? null),
+                    'mobile_verification' => $this->stringOrNull($payload['mobile_verification'] ?? null),
+                    'device' => $this->stringOrNull($payload['device'] ?? null),
+                    'specialization' => $this->stringOrNull($payload['specialization'] ?? null),
+                    'campus' => $this->stringOrNull($payload['campus'] ?? null),
+                    'last_activity' => $this->stringOrNull($payload['last_activity'] ?? null),
+                    'form_initiated' => $this->stringOrNull($payload['form_initiated'] ?? null),
+                    'paid_apps' => $this->stringOrNull($payload['paid_apps'] ?? null),
+                    'enrollment' => $this->stringOrNull($payload['enrollment'] ?? null),
+                    'college' => $this->stringOrNull($payload['college'] ?? null),
+                    'college_name' => $this->stringOrNull($payload['college_name'] ?? null),
+                    'region' => $this->normalizeRegion((string) ($payload['region'] ?? 'West / Others')),
                     'source_file' => $this->stringOrNull($sourceFile),
+                    'schema_json' => $this->stringOrNull($payload['schema_json'] ?? null),
                 ]);
                 $inserted++;
             }
@@ -208,14 +226,14 @@ final class Lead
     public function findByBatch(string $batchId): array
     {
         $statement = Database::connection()->prepare(
-            'SELECT lead_id, name, email, phone, course, specialization, campus, college_name, city, state, region
+            'SELECT ' . self::LIST_COLUMNS . '
              FROM leads
              WHERE batch_id = :batch_id
              ORDER BY id ASC'
         );
         $statement->execute(['batch_id' => $batchId]);
 
-        $rows = $statement->fetchAll();
+        $rows = $statement->fetchAll(PDO::FETCH_ASSOC);
 
         return is_array($rows) ? $rows : [];
     }
@@ -235,7 +253,7 @@ final class Lead
     public function findByBatchPaginated(string $batchId, int $limit, int $offset): array
     {
         $statement = Database::connection()->prepare(
-            'SELECT lead_id, name, email, phone, course, specialization, campus, college_name, city, state, region
+            'SELECT ' . self::LIST_COLUMNS . '
              FROM leads
              WHERE batch_id = :batch_id
              ORDER BY id ASC
@@ -246,7 +264,7 @@ final class Lead
         $statement->bindValue(':offset', max(0, $offset), PDO::PARAM_INT);
         $statement->execute();
 
-        $rows = $statement->fetchAll();
+        $rows = $statement->fetchAll(PDO::FETCH_ASSOC);
 
         return is_array($rows) ? $rows : [];
     }
@@ -290,8 +308,9 @@ final class Lead
         $grouped = array_fill_keys(self::REGIONS, []);
 
         foreach ($this->findByBatch($batchId) as $row) {
-            $region = $this->normalizeRegion((string) ($row['region'] ?? 'West / Others'));
-            $grouped[$region][] = $row;
+            $mapped = $this->schema->mapStoredRow($row, $batchId);
+            $region = $this->normalizeRegion((string) ($mapped['Region'] ?? 'West / Others'));
+            $grouped[$region][] = $mapped;
         }
 
         return $grouped;
@@ -414,11 +433,24 @@ final class Lead
         }
 
         $columnDefinitions = [
-            'lead_origin' => 'ALTER TABLE leads ADD COLUMN lead_origin VARCHAR(190) DEFAULT NULL AFTER city',
+            'status' => 'ALTER TABLE leads ADD COLUMN status VARCHAR(100) DEFAULT NULL AFTER lead_id',
+            'mobile' => 'ALTER TABLE leads ADD COLUMN mobile VARCHAR(50) DEFAULT NULL AFTER email',
+            'lead_score' => 'ALTER TABLE leads ADD COLUMN lead_score VARCHAR(50) DEFAULT NULL AFTER city',
+            'country' => 'ALTER TABLE leads ADD COLUMN country VARCHAR(120) DEFAULT NULL AFTER lead_status',
+            'instance' => 'ALTER TABLE leads ADD COLUMN instance VARCHAR(190) DEFAULT NULL AFTER country',
+            'instance_date' => 'ALTER TABLE leads ADD COLUMN instance_date VARCHAR(120) DEFAULT NULL AFTER instance',
+            'email_verification' => 'ALTER TABLE leads ADD COLUMN email_verification VARCHAR(100) DEFAULT NULL AFTER instance_date',
+            'mobile_verification' => 'ALTER TABLE leads ADD COLUMN mobile_verification VARCHAR(100) DEFAULT NULL AFTER email_verification',
+            'device' => 'ALTER TABLE leads ADD COLUMN device VARCHAR(120) DEFAULT NULL AFTER mobile_verification',
+            'last_activity' => 'ALTER TABLE leads ADD COLUMN last_activity VARCHAR(190) DEFAULT NULL AFTER campus',
+            'enrollment' => 'ALTER TABLE leads ADD COLUMN enrollment VARCHAR(100) DEFAULT NULL AFTER paid_apps',
+            'college' => 'ALTER TABLE leads ADD COLUMN college VARCHAR(190) DEFAULT NULL AFTER enrollment',
+            'schema_json' => 'ALTER TABLE leads ADD COLUMN schema_json JSON DEFAULT NULL AFTER source_file',
+            'lead_origin' => 'ALTER TABLE leads ADD COLUMN lead_origin VARCHAR(190) DEFAULT NULL AFTER lead_score',
             'campaign' => 'ALTER TABLE leads ADD COLUMN campaign VARCHAR(190) DEFAULT NULL AFTER lead_origin',
             'lead_stage' => 'ALTER TABLE leads ADD COLUMN lead_stage VARCHAR(190) DEFAULT NULL AFTER campaign',
             'lead_status' => 'ALTER TABLE leads ADD COLUMN lead_status VARCHAR(190) DEFAULT NULL AFTER lead_stage',
-            'form_initiated' => 'ALTER TABLE leads ADD COLUMN form_initiated VARCHAR(50) DEFAULT NULL AFTER lead_status',
+            'form_initiated' => 'ALTER TABLE leads ADD COLUMN form_initiated VARCHAR(50) DEFAULT NULL AFTER last_activity',
             'paid_apps' => 'ALTER TABLE leads ADD COLUMN paid_apps VARCHAR(50) DEFAULT NULL AFTER form_initiated',
         ];
 
@@ -453,6 +485,7 @@ final class Lead
             'leads_lead_status_index' => 'ALTER TABLE leads ADD INDEX leads_lead_status_index (lead_status)',
             'leads_form_initiated_index' => 'ALTER TABLE leads ADD INDEX leads_form_initiated_index (form_initiated)',
             'leads_paid_apps_index' => 'ALTER TABLE leads ADD INDEX leads_paid_apps_index (paid_apps)',
+            'leads_status_index' => 'ALTER TABLE leads ADD INDEX leads_status_index (status)',
         ];
 
         foreach ($indexDefinitions as $index => $sql) {

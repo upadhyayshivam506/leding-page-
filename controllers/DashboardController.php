@@ -6,10 +6,12 @@ namespace Controllers;
 
 use Models\Lead;
 use Models\LeadPushLog;
+use Models\UploadedLeadFile;
 use PDOException;
 use RuntimeException;
 use Services\AuthService;
 use Services\LeadMappingService;
+use Services\LeadSchemaService;
 
 final class DashboardController
 {
@@ -19,7 +21,9 @@ final class DashboardController
         private readonly AuthService $auth = new AuthService(),
         private readonly Lead $leads = new Lead(),
         private readonly LeadPushLog $leadPushLogs = new LeadPushLog(),
-        private readonly LeadMappingService $leadMapping = new LeadMappingService()
+        private readonly LeadMappingService $leadMapping = new LeadMappingService(),
+        private readonly UploadedLeadFile $uploadedLeadFiles = new UploadedLeadFile(),
+        private readonly LeadSchemaService $leadSchema = new LeadSchemaService()
     )
     {
     }
@@ -36,6 +40,13 @@ final class DashboardController
             'flash_alert' => render_alert(flash(), 'dashboard-alert'),
             'total_students' => e((string) $stats['total_leads']),
             'total_uploaded_files' => e((string) $stats['total_uploaded_files']),
+            'leads_sent' => e((string) $stats['leads_sent']),
+            'failed_leads' => e((string) $stats['failed_leads']),
+            'processing_success_rate' => e($stats['processing_success_rate']),
+            'upload_activity_bars_html' => $stats['upload_activity_bars_html'],
+            'processing_status_rows_html' => $stats['processing_status_rows_html'],
+            'recent_uploaded_files_rows_html' => $stats['recent_uploaded_files_rows_html'],
+            'dashboard_upload_history_api_url' => e(app_url('api/dashboard/upload-history')),
         ]);
     }
 
@@ -139,13 +150,35 @@ final class DashboardController
             'data' => [
                 'job_token' => (string) ($job['job_token'] ?? ''),
                 'status' => (string) ($job['status'] ?? 'queued'),
+                'file_status' => $this->jobDisplayStatus($job),
                 'batch_size' => (int) ($job['batch_size'] ?? 0),
+                'batch_id' => (string) ($job['batch_id'] ?? ''),
                 'total_leads' => (int) ($job['total_leads'] ?? 0),
                 'processed_leads' => (int) ($job['processed_leads'] ?? 0),
                 'total_requests' => (int) ($job['total_requests'] ?? 0),
                 'processed_requests' => (int) ($job['processed_requests'] ?? 0),
                 'success_count' => (int) ($job['success_count'] ?? 0),
                 'failed_count' => (int) ($job['failed_count'] ?? 0),
+            ],
+        ]);
+    }
+
+    public function dashboardUploadHistory(): void
+    {
+        $this->guard();
+
+        $stats = $this->leadStats();
+        $this->jsonResponse([
+            'status' => 'success',
+            'data' => [
+                'total_uploaded_files' => (int) $stats['total_uploaded_files'],
+                'total_leads' => (int) $stats['total_leads'],
+                'leads_sent' => (int) $stats['leads_sent'],
+                'failed_leads' => (int) $stats['failed_leads'],
+                'processing_success_rate' => (string) $stats['processing_success_rate'],
+                'upload_activity_bars_html' => (string) $stats['upload_activity_bars_html'],
+                'processing_status_rows_html' => (string) $stats['processing_status_rows_html'],
+                'recent_uploaded_files_rows_html' => (string) $stats['recent_uploaded_files_rows_html'],
             ],
         ]);
     }
@@ -170,42 +203,10 @@ final class DashboardController
             }
 
             fwrite($output, chr(0xEF) . chr(0xBB) . chr(0xBF));
-            fputcsv($output, [
-                'batch_id',
-                'lead_id',
-                'name',
-                'email',
-                'phone',
-                'course',
-                'state',
-                'city',
-                'lead_origin',
-                'campaign',
-                'lead_stage',
-                'lead_status',
-                'form_initiated',
-                'paid_apps',
-                'created_at',
-            ]);
+            fputcsv($output, $this->leadSchema->columns());
 
             foreach ($rows as $row) {
-                fputcsv($output, [
-                    (string) ($row['batch_id'] ?? ''),
-                    (string) ($row['lead_id'] ?? ''),
-                    (string) ($row['name'] ?? ''),
-                    (string) ($row['email'] ?? ''),
-                    (string) ($row['phone'] ?? ''),
-                    (string) ($row['course'] ?? ''),
-                    (string) ($row['state'] ?? ''),
-                    (string) ($row['city'] ?? ''),
-                    (string) ($row['lead_origin'] ?? ''),
-                    (string) ($row['campaign'] ?? ''),
-                    (string) ($row['lead_stage'] ?? ''),
-                    (string) ($row['lead_status'] ?? ''),
-                    (string) ($row['form_initiated'] ?? ''),
-                    (string) ($row['paid_apps'] ?? ''),
-                    (string) ($row['created_at'] ?? ''),
-                ]);
+                fputcsv($output, array_values($this->leadSchema->visibleRow($row, (string) ($row['batch_id'] ?? ''))));
             }
 
             fclose($output);
@@ -224,7 +225,7 @@ final class DashboardController
         $logData = $this->leadPushLogDataForView(current_page_number(), self::TABLE_PAGE_SIZE);
         $logStats = $this->leadPushLogStats();
 
-        $this->renderAdminPage($user, 'lead-push-logs', 'dashboard/pages/lead-push-logs', [
+        $this->renderAdminPage($user, 'lead-push-logs', 'leadslogs/lead-push-logs', [
             'title' => e('Lead Push Logs'),
             'page_kicker' => e('Delivery audit'),
             'page_title' => e('Lead Push Logs'),
@@ -280,11 +281,18 @@ final class DashboardController
             redirect('/leads');
         }
 
+        $batchId = uniqid('batch_', true);
+
         try {
-            $leadData = $this->parseUploadedLeadData($destination, $extension);
-            $batchId = uniqid('batch_', true);
+            $leadData = $this->parseUploadedLeadData($destination, $extension, $batchId);
             $inserted = $this->leads->insertMany($this->databaseRows($leadData['rows']), $batchId, $fileName);
+            $this->uploadedLeadFiles->create($batchId, $fileName, $storedName, $inserted, $size, 'Uploaded');
         } catch (RuntimeException|PDOException $exception) {
+            try {
+                $this->uploadedLeadFiles->create($batchId, $fileName, $storedName, 0, $size, 'Failed');
+            } catch (\Throwable) {
+                // Best effort only. Preserve the original upload error below.
+            }
             flash($exception->getMessage() !== '' ? $exception->getMessage() : 'Lead upload failed.');
             redirect('/leads');
         }
@@ -777,14 +785,13 @@ final class DashboardController
             );
 
             $this->leadMapping->spawnBackgroundJob((string) ($job['job_token'] ?? ''));
-            flash('Lead upload started successfully.', 'success');
 
             echo json_encode([
                 'status' => 'success',
                 'data' => [
                     'confirmation' => 'Duration settings saved successfully.',
                     'message' => 'API requests are being processed in the background.',
-                    'redirect' => app_url('leads?upload_notice=' . rawurlencode('Lead upload started successfully.')),
+                    'redirect' => app_url('leads?lead_push_job_token=' . rawurlencode((string) ($job['job_token'] ?? '')) . '&lead_push_total=' . count($rows)),
                     'job_token' => (string) ($job['job_token'] ?? ''),
                     'api_duration_selection' => $apiDurationSelection,
                 ],
@@ -804,13 +811,122 @@ final class DashboardController
     public function systemConfig(): void
     {
         $user = $this->guard();
-        $this->renderAdminPage($user, 'system-config', 'dashboard/pages/system-config', [
+        $this->renderAdminPage($user, 'system-config', 'systemconfig/system-config', [
             'title' => e('System Config'),
             'page_kicker' => e('Platform controls'),
             'page_title' => e('System Config'),
             'page_description' => e('Use this page for environment-level settings, database options, upload rules, and system-wide controls.'),
             'flash_alert' => '',
         ]);
+    }
+
+    public function viewUploadedFile(): void
+    {
+        $this->guard();
+
+        try {
+            $batchId = trim((string) ($_GET['batch_id'] ?? ''));
+            $upload = $this->trackedUploadOrFail($batchId);
+            unset(
+                $_SESSION['mapping_preview'],
+                $_SESSION['region_assignments'],
+                $_SESSION['leads_list'],
+                $_SESSION['selected_colleges'],
+                $_SESSION['batch_size'],
+                $_SESSION['delay'],
+                $_SESSION['api_duration_selection']
+            );
+            $_SESSION['last_uploaded_lead_file'] = $this->sessionUploadPayload($upload);
+            $rows = [];
+            try {
+                $rows = $this->mapBatchLeadRows($this->leads->findByBatch($batchId));
+            } catch (PDOException) {
+                $rows = [];
+            }
+            $_SESSION['uploaded_lead_data'] = [
+                'rows' => $rows,
+                'headers' => $this->batchLeadHeaders(),
+            ];
+            redirect('/leads/mapping');
+        } catch (RuntimeException $exception) {
+            flash($exception->getMessage() !== '' ? $exception->getMessage() : 'Uploaded file not found.');
+            redirect('/dashboard');
+        }
+    }
+
+    public function retryUploadedFilePush(): void
+    {
+        $this->guard();
+
+        try {
+            $batchId = trim((string) ($_GET['batch_id'] ?? ''));
+            $upload = $this->trackedUploadOrFail($batchId);
+            $job = $this->leadMapping->retryLatestBatchJob($batchId);
+            $this->uploadedLeadFiles->updateStatus($batchId, 'Processing', (string) ($job['job_token'] ?? ''));
+            flash('Retry push started for ' . (string) ($upload['file_name'] ?? 'the selected file') . '.', 'success');
+        } catch (RuntimeException $exception) {
+            flash($exception->getMessage() !== '' ? $exception->getMessage() : 'Unable to retry the selected push.');
+        }
+
+        redirect('/dashboard');
+    }
+
+    public function downloadUploadedFileLog(): void
+    {
+        $this->guard();
+
+        try {
+            $batchId = trim((string) ($_GET['batch_id'] ?? ''));
+            $upload = $this->trackedUploadOrFail($batchId);
+            $rows = $this->leadPushLogs->findByBatch($batchId);
+            $filenameBase = pathinfo((string) ($upload['file_name'] ?? ('batch_' . $batchId)), PATHINFO_FILENAME);
+            $filename = preg_replace('/[^A-Za-z0-9_\-]+/', '_', (string) $filenameBase);
+            $filename = trim((string) $filename, '_');
+            if ($filename === '') {
+                $filename = 'upload_log_' . date('Ymd_His');
+            }
+
+            header('Content-Type: text/csv; charset=UTF-8');
+            header('Content-Disposition: attachment; filename="' . $filename . '_log.csv"');
+            header('Pragma: no-cache');
+            header('Expires: 0');
+
+            $output = fopen('php://output', 'wb');
+            if ($output === false) {
+                throw new RuntimeException('Unable to create the log download.');
+            }
+
+            fwrite($output, chr(0xEF) . chr(0xBB) . chr(0xBF));
+            fputcsv($output, ['Batch ID', 'Lead ID', 'Name', 'Email', 'Mobile', 'Course', 'Specialization', 'Campus', 'College', 'City', 'State', 'Region', 'Source File', 'Status', 'Attempt', 'Response', 'Created At']);
+
+            foreach ($rows as $row) {
+                fputcsv($output, [
+                    (string) ($row['batch_id'] ?? ''),
+                    (string) ($row['lead_id'] ?? ''),
+                    (string) ($row['name'] ?? ''),
+                    (string) ($row['email'] ?? ''),
+                    (string) ($row['phone'] ?? ''),
+                    (string) ($row['course'] ?? ''),
+                    (string) ($row['specialization'] ?? ''),
+                    (string) ($row['campus'] ?? ''),
+                    (string) ($row['college_name'] ?? ''),
+                    (string) ($row['city'] ?? ''),
+                    (string) ($row['state'] ?? ''),
+                    (string) ($row['region'] ?? ''),
+                    (string) ($row['source_file'] ?? ''),
+                    (string) ($row['status'] ?? ''),
+                    (string) ($row['attempt_no'] ?? ''),
+                    (string) ($row['response'] ?? ''),
+                    (string) ($row['created_at'] ?? ''),
+                ]);
+            }
+
+            fclose($output);
+            exit;
+        } catch (RuntimeException $exception) {
+            flash($exception->getMessage() !== '' ? $exception->getMessage() : 'Unable to download the upload log.');
+            redirect('/dashboard');
+        }
     }
 
     private function renderAdminPage(array $user, string $activePage, string $contentTemplate, array $overrides = []): void
@@ -982,7 +1098,7 @@ final class DashboardController
         ];
     }
 
-    private function parseUploadedLeadData(string $filePath, string $extension): array
+    private function parseUploadedLeadData(string $filePath, string $extension, string $batchId = ''): array
     {
         $rows = $this->parseSpreadsheetRows($filePath, $extension);
 
@@ -990,8 +1106,8 @@ final class DashboardController
             $rows = $this->parsedRowsFromRequest();
         }
 
-        $rows = $this->prepareRows($rows);
-        $headers = ['Lead ID', 'Name', 'Email', 'Phone', 'Course', 'Specialization', 'Campus', 'College Name', 'City', 'State', 'Region'];
+        $rows = $this->prepareRows($rows, $batchId);
+        $headers = $this->batchLeadHeaders();
 
         return [
             'rows' => $rows,
@@ -1090,7 +1206,7 @@ final class DashboardController
         return $rows;
     }
 
-    private function prepareRows(array $rawRows): array
+    private function prepareRows(array $rawRows, string $batchId = ''): array
     {
         $prepared = [];
 
@@ -1099,30 +1215,12 @@ final class DashboardController
                 continue;
             }
 
-            $row = [
-                'Lead ID' => $this->firstValue($rawRow, ['lead_id', 'leadid', 'id']) ?: 'LD' . (string) (1001 + $index),
-                'Name' => $this->firstValue($rawRow, ['name', 'student_name', 'full_name']),
-                'Email' => $this->firstValue($rawRow, ['email', 'email_address']),
-                'Phone' => $this->firstValue($rawRow, ['phone', 'mobile', 'mobile_number', 'phone_number', 'contact']),
-                'Course' => $this->firstValue($rawRow, ['course', 'program']),
-                'Specialization' => $this->firstValue($rawRow, ['specialization']),
-                'Campus' => $this->firstValue($rawRow, ['campus', 'college_campus']),
-                'College Name' => $this->firstValue($rawRow, ['college_name', 'college']),
-                'City' => $this->firstValue($rawRow, ['city']),
-                'Lead Origin' => $this->firstValue($rawRow, ['lead_origin', 'origin', 'source', 'lead_source']),
-                'Campaign' => $this->firstValue($rawRow, ['campaign', 'campaign_name', 'utm_campaign']),
-                'Lead Stage' => $this->firstValue($rawRow, ['lead_stage', 'stage']),
-                'Lead Status' => $this->firstValue($rawRow, ['lead_status', 'status']),
-                'Form Initiated' => $this->firstValue($rawRow, ['form_initiated', 'form_started']),
-                'Paid Apps' => $this->firstValue($rawRow, ['paid_apps', 'paid_application', 'paid_applications']),
-                'State' => $this->firstValue($rawRow, ['state', 'province']),
-            ];
+            $row = $this->leadSchema->mapIncomingRow($rawRow, $index, $batchId);
 
-            if (!$this->hasRowContent($row)) {
+            if (!$this->leadSchema->hasVisibleContent($row)) {
                 continue;
             }
 
-            $row['Region'] = getRegionByState($row['State']);
             $prepared[] = $row;
         }
 
@@ -1133,73 +1231,19 @@ final class DashboardController
         return $prepared;
     }
 
-    private function hasRowContent(array $row): bool
-    {
-        foreach ($row as $key => $value) {
-            if ($key === 'Lead ID') {
-                continue;
-            }
-
-            if (trim((string) $value) !== '') {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private function firstValue(array $row, array $keys): string
-    {
-        foreach ($row as $originalKey => $value) {
-            if (in_array($this->normalizeKey((string) $originalKey), $keys, true)) {
-                return trim((string) $value);
-            }
-        }
-
-        return '';
-    }
-
-    private function normalizeKey(string $key): string
-    {
-        $key = strtolower(trim($key));
-        $key = preg_replace('/[^a-z0-9]+/', '_', $key);
-
-        return trim((string) $key, '_');
-    }
-
     private function databaseRows(array $rows): array
     {
-        return array_map(static function (array $row): array {
-            return [
-                'lead_id' => (string) ($row['Lead ID'] ?? ''),
-                'name' => (string) ($row['Name'] ?? ''),
-                'email' => (string) ($row['Email'] ?? ''),
-                'phone' => (string) ($row['Phone'] ?? ''),
-                'course' => (string) ($row['Course'] ?? ''),
-                'specialization' => (string) ($row['Specialization'] ?? ''),
-                'campus' => (string) ($row['Campus'] ?? ''),
-                'college_name' => (string) ($row['College Name'] ?? ''),
-                'city' => (string) ($row['City'] ?? ''),
-                'lead_origin' => (string) ($row['Lead Origin'] ?? ''),
-                'campaign' => (string) ($row['Campaign'] ?? ''),
-                'lead_stage' => (string) ($row['Lead Stage'] ?? ''),
-                'lead_status' => (string) ($row['Lead Status'] ?? ''),
-                'form_initiated' => (string) ($row['Form Initiated'] ?? ''),
-                'paid_apps' => (string) ($row['Paid Apps'] ?? ''),
-                'state' => (string) ($row['State'] ?? ''),
-                'region' => (string) ($row['Region'] ?? 'West / Others'),
-            ];
-        }, $rows);
+        return array_map(fn (array $row): array => $this->leadSchema->databaseRowFromSchema($row), $rows);
     }
 
     private function leadListHeaders(): array
     {
-        return ['Batch ID', 'Lead ID', 'Name', 'Email', 'Phone', 'Course', 'State', 'City', 'Lead Origin', 'Campaign', 'Lead Stage', 'Lead Status', 'Form Initiated', 'Paid Apps', 'Created At'];
+        return $this->leadSchema->columns();
     }
 
     private function batchLeadHeaders(): array
     {
-        return ['Lead ID', 'Name', 'Email', 'Phone', 'Course', 'Specialization', 'Campus', 'College Name', 'City', 'State', 'Region'];
+        return $this->leadSchema->columns();
     }
 
     private function logHeaders(): array
@@ -1209,44 +1253,18 @@ final class DashboardController
 
     private function mapLeadListRows(array $rows): array
     {
-        return array_map(static function (array $row): array {
-            return [
-                'Batch ID' => (string) ($row['batch_id'] ?? ''),
-                'Lead ID' => (string) ($row['lead_id'] ?? ''),
-                'Name' => (string) ($row['name'] ?? ''),
-                'Email' => (string) ($row['email'] ?? ''),
-                'Phone' => (string) ($row['phone'] ?? ''),
-                'Course' => (string) ($row['course'] ?? ''),
-                'State' => (string) ($row['state'] ?? ''),
-                'City' => (string) ($row['city'] ?? ''),
-                'Lead Origin' => (string) ($row['lead_origin'] ?? ''),
-                'Campaign' => (string) ($row['campaign'] ?? ''),
-                'Lead Stage' => (string) ($row['lead_stage'] ?? ''),
-                'Lead Status' => (string) ($row['lead_status'] ?? ''),
-                'Form Initiated' => (string) ($row['form_initiated'] ?? ''),
-                'Paid Apps' => (string) ($row['paid_apps'] ?? ''),
-                'Created At' => (string) ($row['created_at'] ?? ''),
-            ];
-        }, $rows);
+        return array_map(fn (array $row): array => $this->leadSchema->visibleRow($row, (string) ($row['batch_id'] ?? '')), $rows);
     }
 
     private function mapBatchLeadRows(array $rows): array
     {
-        return array_map(static function (array $row): array {
-            return [
-                'Lead ID' => (string) ($row['lead_id'] ?? $row['Lead ID'] ?? ''),
-                'Name' => (string) ($row['name'] ?? $row['Name'] ?? ''),
-                'Email' => (string) ($row['email'] ?? $row['Email'] ?? ''),
-                'Phone' => (string) ($row['phone'] ?? $row['Phone'] ?? ''),
-                'Course' => (string) ($row['course'] ?? $row['Course'] ?? ''),
-                'Specialization' => (string) ($row['specialization'] ?? $row['Specialization'] ?? ''),
-                'Campus' => (string) ($row['campus'] ?? $row['Campus'] ?? ''),
-                'College Name' => (string) ($row['college_name'] ?? $row['College Name'] ?? ''),
-                'City' => (string) ($row['city'] ?? $row['City'] ?? ''),
-                'State' => (string) ($row['state'] ?? $row['State'] ?? ''),
-                'Region' => (string) ($row['region'] ?? $row['Region'] ?? ''),
-            ];
-        }, $rows);
+        return array_map(
+            fn (array $row): array => $this->leadSchema->mapStoredRow(
+                $row,
+                (string) ($row['batch_id'] ?? $row['Batch ID'] ?? '')
+            ),
+            $rows
+        );
     }
 
     private function mapLogRows(array $rows): array
@@ -1480,6 +1498,139 @@ final class DashboardController
             . '</thead><tbody>'
             . render_table_body($headers, $rows, $emptyMessage)
             . '</tbody></table></div>';
+    }
+
+    private function renderUploadActivityBars(array $weeklyUploads): string
+    {
+        $uploads = $weeklyUploads !== [] ? $weeklyUploads : array_map(
+            static fn (string $label): array => ['label' => $label, 'total' => 0],
+            ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        );
+        $max = max(1, ...array_map(static fn (array $row): int => (int) ($row['total'] ?? 0), $uploads));
+
+        return implode('', array_map(static function (array $row) use ($max): string {
+            $total = (int) ($row['total'] ?? 0);
+            $height = max(12, (int) round(($total / $max) * 100));
+
+            return '<div class="activity-bar" title="' . e((string) $total) . ' uploads"><span style="height: ' . e((string) $height) . '%"></span><small>' . e((string) ($row['label'] ?? '')) . '</small></div>';
+        }, $uploads));
+    }
+
+    private function renderProcessingStatusRows(array $statusCounts): string
+    {
+        $rows = [
+            ['label' => 'Completed', 'count' => (int) ($statusCounts['Completed'] ?? 0), 'dot' => 'success'],
+            ['label' => 'Processing', 'count' => (int) ($statusCounts['Processing'] ?? 0), 'dot' => 'warning'],
+            ['label' => 'Partial', 'count' => (int) ($statusCounts['Partial'] ?? 0), 'dot' => 'purple'],
+            ['label' => 'Failed', 'count' => (int) ($statusCounts['Failed'] ?? 0), 'dot' => 'danger'],
+            ['label' => 'Uploaded', 'count' => (int) ($statusCounts['Uploaded'] ?? 0), 'dot' => 'muted'],
+        ];
+
+        return implode('', array_map(
+            static fn (array $row): string => '<div><i class="legend-dot legend-dot--' . e((string) $row['dot']) . '"></i> '
+                . e((string) $row['label']) . ' <strong>' . e(number_format((int) $row['count'])) . '</strong></div>',
+            $rows
+        ));
+    }
+
+    private function renderRecentUploadedFilesRows(array $files): string
+    {
+        if ($files === []) {
+            return '<tr><td colspan="5" class="table-empty-state">No uploaded files are available yet.</td></tr>';
+        }
+
+        return implode('', array_map(function (array $file): string {
+            $batchId = (string) ($file['batch_id'] ?? '');
+            $status = (string) ($file['status'] ?? 'Uploaded');
+            $viewUrl = app_url('dashboard/uploads/view?batch_id=' . rawurlencode($batchId));
+            $retryUrl = app_url('dashboard/uploads/retry?batch_id=' . rawurlencode($batchId));
+            $downloadUrl = app_url('dashboard/uploads/download-log?batch_id=' . rawurlencode($batchId));
+
+            return '<tr>'
+                . '<td>' . e((string) ($file['file_name'] ?? '')) . '</td>'
+                . '<td>' . e($this->formatDashboardDate((string) ($file['upload_date'] ?? ''))) . '</td>'
+                . '<td>' . e(number_format((int) ($file['total_leads'] ?? 0))) . '</td>'
+                . '<td><span class="status-pill ' . e($this->statusPillClass($status)) . '">' . e($status) . '</span></td>'
+                . '<td>'
+                . '<a href="' . e($viewUrl) . '" class="table-action">View</a> '
+                . '<a href="' . e($retryUrl) . '" class="table-action">Retry Push</a> '
+                . '<a href="' . e($downloadUrl) . '" class="table-action">Download Log</a>'
+                . '</td>'
+                . '</tr>';
+        }, $files));
+    }
+
+    private function statusPillClass(string $status): string
+    {
+        return match (strtolower(trim($status))) {
+            'completed' => 'status-pill--success',
+            'failed' => 'status-pill--danger',
+            'partial' => 'status-pill--warning',
+            'processing' => 'status-pill--warning',
+            default => '',
+        };
+    }
+
+    private function formatDashboardDate(string $value): string
+    {
+        $timestamp = strtotime($value);
+
+        return $timestamp !== false ? date('M d, Y H:i', $timestamp) : $value;
+    }
+
+    private function jobDisplayStatus(array $job): string
+    {
+        $status = strtolower(trim((string) ($job['status'] ?? 'uploaded')));
+        $totalRequests = max(0, (int) ($job['total_requests'] ?? 0));
+        $processedRequests = max(0, (int) ($job['processed_requests'] ?? 0));
+        $successCount = max(0, (int) ($job['success_count'] ?? 0));
+        $failedCount = max(0, (int) ($job['failed_count'] ?? 0));
+
+        if (in_array($status, ['queued', 'processing'], true)) {
+            return 'Processing';
+        }
+
+        if ($totalRequests > 0 && $processedRequests >= $totalRequests) {
+            if ($failedCount === 0 && $successCount > 0) {
+                return 'Completed';
+            }
+
+            if ($successCount === 0 && $failedCount > 0) {
+                return 'Failed';
+            }
+
+            if ($successCount > 0 && $failedCount > 0) {
+                return 'Partial';
+            }
+        }
+
+        return 'Uploaded';
+    }
+
+    private function trackedUploadOrFail(string $batchId): array
+    {
+        if ($batchId === '') {
+            throw new RuntimeException('Batch ID is required.');
+        }
+
+        $upload = $this->uploadedLeadFiles->findByBatch($batchId);
+        if ($upload === null) {
+            throw new RuntimeException('Uploaded file not found.');
+        }
+
+        return $upload;
+    }
+
+    private function sessionUploadPayload(array $upload): array
+    {
+        return [
+            'original_name' => (string) ($upload['file_name'] ?? ''),
+            'stored_name' => (string) ($upload['stored_name'] ?? ''),
+            'uploaded_at' => (string) ($upload['upload_date'] ?? ''),
+            'size' => (int) ($upload['file_size'] ?? 0),
+            'extension' => strtoupper((string) pathinfo((string) ($upload['file_name'] ?? ''), PATHINFO_EXTENSION)),
+            'batch_id' => (string) ($upload['batch_id'] ?? ''),
+        ];
     }
 
     private function requestedRegionSummary(): array
@@ -1754,7 +1905,7 @@ final class DashboardController
             return [];
         }
 
-        return $this->mapBatchLeadRows($filtered);
+        return $this->leadSchema->normalizePayloadRows($filtered);
     }
 
     private function json(array $value): string
@@ -1770,14 +1921,36 @@ final class DashboardController
     private function leadStats(): array
     {
         try {
+            $statusCounts = $this->uploadedLeadFiles->countsByStatus();
+            $weeklyUploads = $this->uploadedLeadFiles->uploadCountsByDay(7);
+            $completedFiles = (int) ($statusCounts['Completed'] ?? 0);
+            $partialFiles = (int) ($statusCounts['Partial'] ?? 0);
+            $failedFiles = (int) ($statusCounts['Failed'] ?? 0);
+            $processedFiles = max(0, $completedFiles + $partialFiles + $failedFiles);
+            $successRate = $processedFiles > 0
+                ? (string) round(($completedFiles / $processedFiles) * 100) . '%'
+                : '0%';
+
             return [
                 'total_leads' => $this->leads->countAll(),
-                'total_uploaded_files' => $this->leads->countDistinctBatches(),
+                'total_uploaded_files' => $this->uploadedLeadFiles->countAll(),
+                'leads_sent' => $this->leadPushLogs->countByStatus('success'),
+                'failed_leads' => $this->leadPushLogs->countByStatus('failed'),
+                'processing_success_rate' => $successRate,
+                'upload_activity_bars_html' => $this->renderUploadActivityBars($weeklyUploads),
+                'processing_status_rows_html' => $this->renderProcessingStatusRows($statusCounts),
+                'recent_uploaded_files_rows_html' => $this->renderRecentUploadedFilesRows($this->uploadedLeadFiles->latest(5)),
             ];
         } catch (PDOException) {
             return [
                 'total_leads' => 0,
                 'total_uploaded_files' => 0,
+                'leads_sent' => 0,
+                'failed_leads' => 0,
+                'processing_success_rate' => '0%',
+                'upload_activity_bars_html' => $this->renderUploadActivityBars([]),
+                'processing_status_rows_html' => $this->renderProcessingStatusRows([]),
+                'recent_uploaded_files_rows_html' => $this->renderRecentUploadedFilesRows([]),
             ];
         }
     }
@@ -1874,6 +2047,13 @@ final class DashboardController
             'uploaded_batch_id' => '',
             'total_students' => '0',
             'total_uploaded_files' => '0',
+            'leads_sent' => '0',
+            'failed_leads' => '0',
+            'processing_success_rate' => '0%',
+            'upload_activity_bars_html' => '',
+            'processing_status_rows_html' => '',
+            'recent_uploaded_files_rows_html' => '',
+            'dashboard_upload_history_api_url' => '',
             'mapping_step' => '',
             'main_table_head_html' => '',
             'main_table_body_html' => '',

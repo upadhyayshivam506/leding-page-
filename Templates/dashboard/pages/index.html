@@ -1,16 +1,16 @@
-﻿<section class="page-heading">
+<section class="page-heading">
     <p class="hero-label">{{page_kicker}}</p>
     <h2>{{page_title}}</h2>
 </section>
 
-<section class="stats-grid">
+<section class="stats-grid" data-dashboard-upload-history data-dashboard-upload-history-url="{{dashboard_upload_history_api_url}}">
     <article class="metric-card metric-card--accent">
         <div class="metric-icon metric-icon--files"></div>
         <div class="metric-card__header">
             <span>Total Uploaded Files</span>
             <span class="metric-trend">MySQL</span>
         </div>
-        <h3>{{total_uploaded_files}}</h3>
+        <h3 data-dashboard-total-uploaded-files>{{total_uploaded_files}}</h3>
     </article>
     <article class="metric-card">
         <div class="metric-icon metric-icon--leads"></div>
@@ -18,23 +18,23 @@
             <span>Total Students</span>
             <span class="metric-trend metric-trend--success">Live</span>
         </div>
-        <h3>{{total_students}}</h3>
+        <h3 data-dashboard-total-leads>{{total_students}}</h3>
     </article>
     <article class="metric-card">
         <div class="metric-icon metric-icon--sent"></div>
         <div class="metric-card__header">
             <span>Leads Sent</span>
-            <span class="metric-trend metric-trend--success">+5%</span>
+            <span class="metric-trend metric-trend--success">Logs</span>
         </div>
-        <h3>42,150</h3>
+        <h3 data-dashboard-leads-sent>{{leads_sent}}</h3>
     </article>
     <article class="metric-card metric-card--dangerSoft">
         <div class="metric-icon metric-icon--failed"></div>
         <div class="metric-card__header">
             <span>Failed Leads</span>
-            <span class="metric-trend metric-trend--danger">-2%</span>
+            <span class="metric-trend metric-trend--danger">Logs</span>
         </div>
-        <h3>3,050</h3>
+        <h3 data-dashboard-failed-leads>{{failed_leads}}</h3>
     </article>
 </section>
 
@@ -48,18 +48,12 @@
             <span class="panel-chip">Last 7 days</span>
         </div>
         <div class="activity-chart">
-            <div class="activity-chart__bars">
-                <div class="activity-bar"><span style="height: 42%"></span><small>Mon</small></div>
-                <div class="activity-bar"><span style="height: 64%"></span><small>Tue</small></div>
-                <div class="activity-bar"><span style="height: 55%"></span><small>Wed</small></div>
-                <div class="activity-bar"><span style="height: 88%"></span><small>Thu</small></div>
-                <div class="activity-bar"><span style="height: 73%"></span><small>Fri</small></div>
-                <div class="activity-bar"><span style="height: 59%"></span><small>Sat</small></div>
-                <div class="activity-bar"><span style="height: 38%"></span><small>Sun</small></div>
+            <div class="activity-chart__bars" data-dashboard-upload-activity>
+                {{upload_activity_bars_html}}
             </div>
             <div class="chart-legend">
                 <span><i class="legend-dot legend-dot--purple"></i> Upload volume</span>
-                <span><i class="legend-dot legend-dot--success"></i> API success trend</span>
+                <span><i class="legend-dot legend-dot--success"></i> File tracking status</span>
             </div>
         </div>
     </article>
@@ -74,15 +68,12 @@
         <div class="donut-card">
             <div class="donut-graph">
                 <div class="donut-graph__center">
-                    <strong>93%</strong>
-                    <span>Success</span>
+                    <strong data-dashboard-success-rate>{{processing_success_rate}}</strong>
+                    <span>Completed</span>
                 </div>
             </div>
-            <div class="status-list">
-                <div><i class="legend-dot legend-dot--success"></i> Processed <strong>39,420</strong></div>
-                <div><i class="legend-dot legend-dot--warning"></i> Pending <strong>2,730</strong></div>
-                <div><i class="legend-dot legend-dot--danger"></i> Failed <strong>1,950</strong></div>
-                <div><i class="legend-dot legend-dot--muted"></i> Error <strong>1,100</strong></div>
+            <div class="status-list" data-dashboard-processing-status>
+                {{processing_status_rows_html}}
             </div>
         </div>
     </article>
@@ -107,35 +98,8 @@
                     <th>Action</th>
                 </tr>
             </thead>
-            <tbody>
-                <tr>
-                    <td>q4_marketing_leads.csv</td>
-                    <td>Oct 24, 2023 14:32</td>
-                    <td>12,400</td>
-                    <td><span class="status-pill status-pill--success">Processed</span></td>
-                    <td><a href="{{leads_url}}" class="table-action">Open</a></td>
-                </tr>
-                <tr>
-                    <td>delhi_mba_batch.xlsx</td>
-                    <td>Mar 17, 2026 09:10</td>
-                    <td>6,850</td>
-                    <td><span class="status-pill status-pill--warning">Pending</span></td>
-                    <td><a href="{{leads_url}}" class="table-action">Review</a></td>
-                </tr>
-                <!-- <tr>
-                    <td>bangalore_bca_export.xlsx</td>
-                    <td>Mar 16, 2026 18:05</td>
-                    <td>4,120</td>
-                    <td><span class="status-pill status-pill--danger">Failed</span></td>
-                    <td><a href="{{system_config_url}}" class="table-action">Retry</a></td>
-                </tr>
-                <tr>
-                    <td>jaipur_engineering.csv</td>
-                    <td>Mar 16, 2026 11:20</td>
-                    <td>2,440</td>
-                    <td><span class="status-pill">Error</span></td>
-                    <td><a href="{{system_config_url}}" class="table-action">Inspect</a></td>
-                </tr> -->
+            <tbody data-dashboard-recent-uploads>
+                {{recent_uploaded_files_rows_html}}
             </tbody>
         </table>
     </div>

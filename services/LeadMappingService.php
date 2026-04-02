@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Services;
 
 use Config\Database;
+use Models\UploadedLeadFile;
 use PDO;
 use RuntimeException;
 
@@ -16,6 +17,7 @@ final class LeadMappingService
     public function ensureTables(): void
     {
         $connection = Database::connection();
+        (new UploadedLeadFile());
 
         $connection->exec(
             'CREATE TABLE IF NOT EXISTS colleagues (
@@ -102,6 +104,7 @@ final class LeadMappingService
                 response LONGTEXT DEFAULT NULL,
                 request_key VARCHAR(160) DEFAULT NULL,
                 attempt_no INT NOT NULL DEFAULT 1,
+                schema_json JSON DEFAULT NULL,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (id),
                 KEY lead_api_logs_batch_id_index (batch_id),
@@ -113,12 +116,13 @@ final class LeadMappingService
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
         );
 
+        $this->ensureLeadApiLogsColumns($connection);
         $this->seedDefaultColleagues($connection);
     }
 
     public function availableColumns(): array
     {
-        return ['Course', 'Specialization', 'Campus', 'College Name', 'City', 'State', 'Region'];
+        return ['Course', 'Specialization', 'Campus', 'College', 'City', 'State', 'Region'];
     }
 
     public function regions(): array
@@ -251,6 +255,7 @@ final class LeadMappingService
     public function filterPreviewRows(array $rows, array $regions, array $courseValues, string $specialization): array
     {
         $filtered = [];
+        $schema = new LeadSchemaService();
 
         foreach ($rows as $row) {
             if (!$this->rowMatchesRegionAndCourse($row, $regions, $courseValues)) {
@@ -261,19 +266,7 @@ final class LeadMappingService
                 continue;
             }
 
-            $filtered[] = [
-                'Lead ID' => (string) ($row['Lead ID'] ?? ''),
-                'Name' => (string) ($row['Name'] ?? ''),
-                'Email' => (string) ($row['Email'] ?? ''),
-                'Phone' => (string) ($row['Phone'] ?? ''),
-                'Course' => (string) ($row['Course'] ?? ''),
-                'Specialization' => (string) ($row['Specialization'] ?? ''),
-                'Campus' => (string) ($row['Campus'] ?? ''),
-                'College Name' => (string) ($row['College Name'] ?? ''),
-                'City' => (string) ($row['City'] ?? ''),
-                'State' => (string) ($row['State'] ?? ''),
-                'Region' => (string) ($row['Region'] ?? 'West / Others'),
-            ];
+            $filtered[] = $schema->mapStoredRow($row, (string) ($row['Batch ID'] ?? $row['batch_id'] ?? ''));
         }
 
         return $filtered;
@@ -349,6 +342,7 @@ final class LeadMappingService
 
         $existing = $this->findJobByConfiguration($mappingConfigurationId);
         if ($existing !== null && in_array((string) ($existing['status'] ?? ''), ['queued', 'processing', 'completed'], true)) {
+            $this->syncUploadFileStatusByJobToken((string) ($existing['job_token'] ?? ''));
             return $existing;
         }
 
@@ -377,6 +371,8 @@ final class LeadMappingService
         if ($job === null) {
             throw new RuntimeException('Unable to create background sending job.');
         }
+
+        (new UploadedLeadFile())->updateStatus($batchId, 'Uploaded', (string) ($job['job_token'] ?? ''));
 
         return $job;
     }
@@ -415,6 +411,62 @@ final class LeadMappingService
         return is_array($job) ? $job : null;
     }
 
+    public function retryLatestBatchJob(string $batchId): array
+    {
+        $batchId = trim($batchId);
+        if ($batchId === '') {
+            throw new RuntimeException('Batch ID is required to retry the lead push.');
+        }
+
+        $latestJob = $this->latestJobByBatch($batchId);
+        if ($latestJob === null) {
+            throw new RuntimeException('No previous API push job was found for this file.');
+        }
+
+        if ((string) ($latestJob['status'] ?? '') === 'queued') {
+            $this->spawnBackgroundJob((string) ($latestJob['job_token'] ?? ''));
+            $this->syncUploadFileStatusByJobToken((string) ($latestJob['job_token'] ?? ''));
+
+            return $latestJob;
+        }
+
+        if ((string) ($latestJob['status'] ?? '') === 'processing') {
+            $this->syncUploadFileStatusByJobToken((string) ($latestJob['job_token'] ?? ''));
+
+            return $latestJob;
+        }
+
+        $mappingConfiguration = $this->findMappingConfiguration((int) ($latestJob['mapping_configuration_id'] ?? 0));
+        if ($mappingConfiguration === null) {
+            throw new RuntimeException('Unable to load the last mapping configuration for retry.');
+        }
+
+        $regions = $this->decodeJsonArray($mappingConfiguration['selected_regions'] ?? '[]');
+        $courses = $this->decodeJsonArray($mappingConfiguration['selected_courses'] ?? '[]');
+        $specialization = trim((string) ($mappingConfiguration['selected_specialization'] ?? ''));
+        $assignmentsByRegion = $this->decodeJsonMap($latestJob['colleges_json'] ?? '{}');
+        $rows = $this->fetchBatchRows($batchId);
+        $leads = $this->filterPreviewRows($rows, $regions, $courses, $specialization);
+
+        if ($leads === []) {
+            throw new RuntimeException('No mapped leads are available for retry.');
+        }
+
+        $mappingConfigurationId = $this->duplicateMappingConfiguration($mappingConfiguration, count($leads));
+        $job = $this->createOrReuseJob(
+            $mappingConfigurationId,
+            $batchId,
+            max(1, (int) ($latestJob['batch_size'] ?? 50)),
+            max(0.0, (float) ($latestJob['delay_seconds'] ?? 0.35)),
+            $leads,
+            $assignmentsByRegion
+        );
+
+        $this->spawnBackgroundJob((string) ($job['job_token'] ?? ''));
+
+        return $job;
+    }
+
     public function spawnBackgroundJob(string $jobToken): void
     {
         $jobToken = trim($jobToken);
@@ -431,13 +483,22 @@ final class LeadMappingService
         $phpBinary = escapeshellarg($phpBinary);
         $runnerArg = escapeshellarg($runner);
         $tokenArg = escapeshellarg($jobToken);
+        $logFile = $this->jobOutputLogPath($jobToken);
+        $logArg = escapeshellarg($logFile);
 
         if (DIRECTORY_SEPARATOR === '\\') {
-            pclose(popen('start /B "" ' . $phpBinary . ' ' . $runnerArg . ' ' . $tokenArg, 'r'));
+            $command = 'cmd /c start "" /B ' . $phpBinary . ' ' . $runnerArg . ' ' . $tokenArg . ' >> ' . $logArg . ' 2>&1';
+
+            if (function_exists('popen')) {
+                @pclose(@popen($command, 'r'));
+                return;
+            }
+
+            @exec($command);
             return;
         }
 
-        exec($phpBinary . ' ' . $runnerArg . ' ' . $tokenArg . ' > /dev/null 2>&1 &');
+        @exec($phpBinary . ' ' . $runnerArg . ' ' . $tokenArg . ' >> ' . $logArg . ' 2>&1 &');
     }
 
     private function resolvePhpBinary(): string
@@ -453,7 +514,11 @@ final class LeadMappingService
             $candidates[] = PHP_BINARY;
         }
 
+        $xamppRoot = dirname(dirname(base_path()));
         $candidates = array_merge($candidates, [
+            $xamppRoot . DIRECTORY_SEPARATOR . 'php' . DIRECTORY_SEPARATOR . 'php.exe',
+            'C:\\xampp\\php\\php.exe',
+            'C:\\php\\php.exe',
             '/Applications/XAMPP/xamppfiles/bin/php',
             '/Applications/XAMPP/bin/php',
             'php',
@@ -464,12 +529,22 @@ final class LeadMappingService
                 return $candidate;
             }
 
-            if (is_file($candidate) && is_executable($candidate)) {
+            if (is_file($candidate)) {
                 return $candidate;
             }
         }
 
         return 'php';
+    }
+
+    private function jobOutputLogPath(string $jobToken): string
+    {
+        $directory = base_path('uploads/logs');
+        if (!is_dir($directory)) {
+            @mkdir($directory, 0775, true);
+        }
+
+        return $directory . DIRECTORY_SEPARATOR . 'lead-mapping-job-' . preg_replace('/[^A-Za-z0-9_\-]/', '_', $jobToken) . '.log';
     }
 
     public function runQueuedJob(string $jobToken): void
@@ -510,6 +585,7 @@ final class LeadMappingService
         $batches = array_chunk($leads, $batchSize);
 
         $this->updateJobState($jobToken, 'processing', 'started_at = NOW()');
+        $this->syncUploadFileStatus($batchId, $jobToken);
 
         foreach ($batches as $batchIndex => $batch) {
             foreach ($batch as $lead) {
@@ -517,7 +593,7 @@ final class LeadMappingService
                 $collegeIds = $this->normalizeCollegeIds((array) ($assignmentsByRegion[$leadRegion] ?? []));
 
                 foreach ($collegeIds as $collegeId) {
-                    $requestKey = sha1($mappingConfigurationId . '|' . (string) ($lead['Lead ID'] ?? '') . '|' . $collegeId);
+                    $requestKey = sha1($mappingConfigurationId . '|' . (string) ($lead['__lead_id'] ?? $lead['Lead ID'] ?? '') . '|' . $collegeId);
                     if ($this->hasSuccessfulLog($requestKey)) {
                         continue;
                     }
@@ -543,6 +619,7 @@ final class LeadMappingService
 
         $this->updateJobState($jobToken, 'completed', 'completed_at = NOW()');
         $this->updateConfigurationStatus($mappingConfigurationId, 'completed');
+        $this->syncUploadFileStatus($batchId, $jobToken);
     }
 
     public function storeLeadLog(
@@ -560,19 +637,19 @@ final class LeadMappingService
 
         $statement = Database::connection()->prepare(
             'INSERT INTO lead_api_logs (
-                mapping_configuration_id, job_token, batch_id, lead_id, name, email, phone, course, specialization, campus, college_name, city, state, region, source_file, status, response, request_key, attempt_no, created_at
+                mapping_configuration_id, job_token, batch_id, lead_id, name, email, phone, course, specialization, campus, college_name, city, state, region, source_file, status, response, request_key, attempt_no, schema_json, created_at
              ) VALUES (
-                :mapping_configuration_id, :job_token, :batch_id, :lead_id, :name, :email, :phone, :course, :specialization, :campus, :college_name, :city, :state, :region, :source_file, :status, :response, :request_key, :attempt_no, NOW()
+                :mapping_configuration_id, :job_token, :batch_id, :lead_id, :name, :email, :phone, :course, :specialization, :campus, :college_name, :city, :state, :region, :source_file, :status, :response, :request_key, :attempt_no, :schema_json, NOW()
              )'
         );
         $statement->execute([
             'mapping_configuration_id' => $mappingConfigurationId > 0 ? $mappingConfigurationId : null,
             'job_token' => $jobToken !== '' ? $jobToken : null,
             'batch_id' => $batchId !== '' ? $batchId : null,
-            'lead_id' => (string) ($lead['Lead ID'] ?? ''),
+            'lead_id' => (string) ($lead['__lead_id'] ?? $lead['Lead ID'] ?? ''),
             'name' => $this->stringOrNull($lead['Name'] ?? null),
             'email' => $this->stringOrNull($lead['Email'] ?? null),
-            'phone' => $this->stringOrNull($lead['Phone'] ?? null),
+            'phone' => $this->stringOrNull($lead['Mobile'] ?? $lead['Phone'] ?? null),
             'course' => $this->stringOrNull($lead['Course'] ?? null),
             'specialization' => $this->stringOrNull($lead['Specialization'] ?? null),
             'campus' => $this->stringOrNull($lead['Campus'] ?? null),
@@ -585,6 +662,7 @@ final class LeadMappingService
             'response' => $response,
             'request_key' => $requestKey !== '' ? $requestKey : null,
             'attempt_no' => max(1, $attemptNo),
+            'schema_json' => (string) json_encode((new LeadSchemaService())->visibleRow($lead, (string) ($lead['Batch ID'] ?? $batchId)), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
         ]);
     }
 
@@ -672,7 +750,7 @@ final class LeadMappingService
                 $payload = [
                     'name' => (string) ($lead['Name'] ?? ''),
                     'email' => (string) ($lead['Email'] ?? ''),
-                    'mobile' => (string) ($lead['Phone'] ?? ''),
+                    'mobile' => (string) ($lead['Mobile'] ?? ''),
                     'state' => $leadState,
                     'city' => (string) ($lead['City'] ?? ''),
                     'course' => (string) ($lead['Course'] ?? ''),
@@ -683,7 +761,7 @@ final class LeadMappingService
                 $payload = [
                     'name' => (string) ($lead['Name'] ?? ''),
                     'email' => (string) ($lead['Email'] ?? ''),
-                    'mobile' => (string) ($lead['Phone'] ?? ''),
+                    'mobile' => (string) ($lead['Mobile'] ?? ''),
                     'program' => (string) ($lead['Course'] ?? ''),
                     'utm_source' => 'Aff_4074Care',
                     'state' => $leadState,
@@ -700,7 +778,7 @@ final class LeadMappingService
                     'college_id' => '377',
                     'name' => (string) ($lead['Name'] ?? ''),
                     'email' => (string) ($lead['Email'] ?? ''),
-                    'mobile' => (string) ($lead['Phone'] ?? ''),
+                    'mobile' => (string) ($lead['Mobile'] ?? ''),
                     'course' => (string) ($lead['Course'] ?? ''),
                     'source' => 'career_mantra',
                     'state' => $leadState,
@@ -716,7 +794,7 @@ final class LeadMappingService
                     'name' => (string) ($lead['Name'] ?? ''),
                     'email' => (string) ($lead['Email'] ?? ''),
                     'country_dial_code' => '+91',
-                    'mobile' => (string) ($lead['Phone'] ?? ''),
+                    'mobile' => (string) ($lead['Mobile'] ?? ''),
                     'source' => 'career_mantra',
                     'state' => $leadState,
                     'Campus' => (string) ($lead['Campus'] ?? ''),
@@ -732,7 +810,7 @@ final class LeadMappingService
                     'source' => 'career_mantra',
                     'name' => (string) ($lead['Name'] ?? ''),
                     'email' => (string) ($lead['Email'] ?? ''),
-                    'mobile' => (string) ($lead['Phone'] ?? ''),
+                    'mobile' => (string) ($lead['Mobile'] ?? ''),
                     'state' => $leadState,
                     'city' => (string) ($lead['City'] ?? ''),
                     'course' => (string) ($lead['Course'] ?? ''),
@@ -746,7 +824,7 @@ final class LeadMappingService
                     'college_id' => '434',
                     'name' => (string) ($lead['Name'] ?? ''),
                     'email' => (string) ($lead['Email'] ?? ''),
-                    'mobile' => (string) ($lead['Phone'] ?? ''),
+                    'mobile' => (string) ($lead['Mobile'] ?? ''),
                     'source' => 'career_mantra',
                     'state' => $leadState,
                     'city' => (string) ($lead['City'] ?? ''),
@@ -761,7 +839,7 @@ final class LeadMappingService
                     'name' => (string) ($lead['Name'] ?? ''),
                     'email' => (string) ($lead['Email'] ?? ''),
                     'country_dial_code' => '+91',
-                    'mobile' => (string) ($lead['Phone'] ?? ''),
+                    'mobile' => (string) ($lead['Mobile'] ?? ''),
                     'source' => 'career_mantra',
                     'state' => $leadState,
                     'city' => (string) ($lead['City'] ?? ''),
@@ -776,7 +854,7 @@ final class LeadMappingService
                     'source' => 'career_mantra',
                     'name' => (string) ($lead['Name'] ?? ''),
                     'email' => (string) ($lead['Email'] ?? ''),
-                    'mobile' => (string) ($lead['Phone'] ?? ''),
+                    'mobile' => (string) ($lead['Mobile'] ?? ''),
                     'state' => $leadState,
                     'city' => (string) ($lead['City'] ?? ''),
                     'campus' => (string) ($lead['Campus'] ?? ''),
@@ -791,7 +869,7 @@ final class LeadMappingService
                     'source' => 'career_mantra',
                     'name' => (string) ($lead['Name'] ?? ''),
                     'email' => (string) ($lead['Email'] ?? ''),
-                    'mobile' => (string) ($lead['Phone'] ?? ''),
+                    'mobile' => (string) ($lead['Mobile'] ?? ''),
                     'state' => $leadState,
                     'city' => (string) ($lead['City'] ?? ''),
                     'campus' => (string) ($lead['Campus'] ?? ''),
@@ -807,7 +885,7 @@ final class LeadMappingService
                     'college_id' => '5562',
                     'name' => (string) ($lead['Name'] ?? ''),
                     'email' => (string) ($lead['Email'] ?? ''),
-                    'mobile' => (string) ($lead['Phone'] ?? ''),
+                    'mobile' => (string) ($lead['Mobile'] ?? ''),
                     'source' => 'career_mantra',
                     'state' => $leadState,
                     'city' => (string) ($lead['City'] ?? ''),
@@ -826,7 +904,7 @@ final class LeadMappingService
                     'Email' => (string) ($lead['Email'] ?? ''),
                     'State' => $leadState,
                     'City' => (string) ($lead['City'] ?? ''),
-                    'MobileNumber' => (string) ($lead['Phone'] ?? ''),
+                    'MobileNumber' => (string) ($lead['Mobile'] ?? ''),
                     'leadName' => 'Consultants',
                     'LeadSource' => 'Mh. Alam_Career Mantra',
                     'LeadCampaign' => 'Email',
@@ -844,7 +922,7 @@ final class LeadMappingService
                     'source' => 'career_mantra',
                     'name' => (string) ($lead['Name'] ?? ''),
                     'email' => (string) ($lead['Email'] ?? ''),
-                    'mobile' => (string) ($lead['Phone'] ?? ''),
+                    'mobile' => (string) ($lead['Mobile'] ?? ''),
                     'state' => $leadState,
                     'city' => (string) ($lead['City'] ?? ''),
                     'campus' => (string) ($lead['Campus'] ?? ''),
@@ -861,16 +939,16 @@ final class LeadMappingService
                 }
 
                 $payload = [
-                    'lead_id' => (string) ($lead['Lead ID'] ?? ''),
+                    'lead_id' => (string) ($lead['__lead_id'] ?? $lead['Lead ID'] ?? ''),
                     'name' => (string) ($lead['Name'] ?? ''),
                     'email' => (string) ($lead['Email'] ?? ''),
-                    'mobile' => (string) ($lead['Phone'] ?? ''),
+                    'mobile' => (string) ($lead['Mobile'] ?? ''),
                     'state' => $leadState,
                     'city' => (string) ($lead['City'] ?? ''),
                     'course' => (string) ($lead['Course'] ?? ''),
                     'specialization' => (string) ($lead['Specialization'] ?? ''),
                     'campus' => (string) ($lead['Campus'] ?? ''),
-                    'college_name' => (string) ($lead['College Name'] ?? ''),
+                    'college_name' => (string) ($lead['College'] ?? ''),
                 ];
                 break;
         }
@@ -942,6 +1020,7 @@ final class LeadMappingService
             'failed_increment' => $success ? 0 : 1,
             'job_token' => $jobToken,
         ]);
+        $this->syncUploadFileStatusByJobToken($jobToken);
     }
 
     private function incrementProcessedLeads(string $jobToken): void
@@ -974,6 +1053,28 @@ final class LeadMappingService
             $connection->exec(
                 'ALTER TABLE lead_mapping_jobs
                  ADD COLUMN processed_leads INT NOT NULL DEFAULT 0 AFTER total_requests'
+            );
+        }
+    }
+
+    private function ensureLeadApiLogsColumns(PDO $connection): void
+    {
+        $statement = $connection->prepare(
+            'SELECT COUNT(*)
+             FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME = :table_name
+               AND COLUMN_NAME = :column_name'
+        );
+        $statement->execute([
+            'table_name' => 'lead_api_logs',
+            'column_name' => 'schema_json',
+        ]);
+
+        if ((int) $statement->fetchColumn() === 0) {
+            $connection->exec(
+                'ALTER TABLE lead_api_logs
+                 ADD COLUMN schema_json JSON DEFAULT NULL AFTER attempt_no'
             );
         }
     }
@@ -1058,10 +1159,51 @@ final class LeadMappingService
         return is_array($configuration) ? $configuration : null;
     }
 
+    private function latestJobByBatch(string $batchId): ?array
+    {
+        $statement = Database::connection()->prepare(
+            'SELECT *
+             FROM lead_mapping_jobs
+             WHERE batch_id = :batch_id
+             ORDER BY id DESC
+             LIMIT 1'
+        );
+        $statement->execute([
+            'batch_id' => $batchId,
+        ]);
+
+        $job = $statement->fetch(PDO::FETCH_ASSOC);
+
+        return is_array($job) ? $job : null;
+    }
+
+    private function duplicateMappingConfiguration(array $mappingConfiguration, int $totalLeads): int
+    {
+        $statement = Database::connection()->prepare(
+            'INSERT INTO lead_mapping_configurations (
+                batch_id, selected_regions, mapping_column, selected_courses, selected_specialization, selected_colleges, total_leads, status
+             ) VALUES (
+                :batch_id, :selected_regions, :mapping_column, :selected_courses, :selected_specialization, :selected_colleges, :total_leads, :status
+             )'
+        );
+        $statement->execute([
+            'batch_id' => (string) ($mappingConfiguration['batch_id'] ?? ''),
+            'selected_regions' => (string) ($mappingConfiguration['selected_regions'] ?? '[]'),
+            'mapping_column' => (string) ($mappingConfiguration['mapping_column'] ?? 'Course'),
+            'selected_courses' => (string) ($mappingConfiguration['selected_courses'] ?? '[]'),
+            'selected_specialization' => $this->stringOrNull($mappingConfiguration['selected_specialization'] ?? null),
+            'selected_colleges' => (string) ($mappingConfiguration['selected_colleges'] ?? '[]'),
+            'total_leads' => max(0, $totalLeads),
+            'status' => 'confirmed',
+        ]);
+
+        return (int) Database::connection()->lastInsertId();
+    }
+
     private function fetchBatchRows(string $batchId): array
     {
         $statement = Database::connection()->prepare(
-            'SELECT lead_id, name, email, phone, course, specialization, campus, college_name, city, state, region, source_file
+            'SELECT batch_id, lead_id, status, name, email, mobile, phone, course, state, city, lead_score, lead_origin, campaign, lead_stage, lead_status, country, instance, instance_date, email_verification, mobile_verification, device, specialization, campus, last_activity, form_initiated, paid_apps, enrollment, college, college_name, region, source_file, schema_json
              FROM leads
              WHERE batch_id = :batch_id
              ORDER BY id ASC'
@@ -1071,23 +1213,73 @@ final class LeadMappingService
         ]);
 
         $rows = $statement->fetchAll(PDO::FETCH_ASSOC);
+        $schema = new LeadSchemaService();
 
-        return array_map(static function (array $row): array {
-            return [
-                'Lead ID' => (string) ($row['lead_id'] ?? ''),
-                'Name' => (string) ($row['name'] ?? ''),
-                'Email' => (string) ($row['email'] ?? ''),
-                'Phone' => (string) ($row['phone'] ?? ''),
-                'Course' => (string) ($row['course'] ?? ''),
-                'Specialization' => (string) ($row['specialization'] ?? ''),
-                'Campus' => (string) ($row['campus'] ?? ''),
-                'College Name' => (string) ($row['college_name'] ?? ''),
-                'City' => (string) ($row['city'] ?? ''),
-                'State' => (string) ($row['state'] ?? ''),
-                'Region' => (string) ($row['region'] ?? ''),
-                'Source File' => (string) ($row['source_file'] ?? ''),
-            ];
-        }, is_array($rows) ? $rows : []);
+        return array_map(
+            static fn (array $row): array => $schema->mapStoredRow($row, $batchId),
+            is_array($rows) ? $rows : []
+        );
+    }
+
+    private function syncUploadFileStatus(string $batchId, string $jobToken): void
+    {
+        if (trim($batchId) === '' || trim($jobToken) === '') {
+            return;
+        }
+
+        $job = $this->findJobByToken($jobToken);
+        if ($job === null) {
+            return;
+        }
+
+        $status = $this->trackedFileStatusFromJob($job);
+        (new UploadedLeadFile())->updateStatus(
+            $batchId,
+            $status,
+            $jobToken,
+            isset($job['processed_requests']) ? (int) $job['processed_requests'] : null,
+            isset($job['success_count']) ? (int) $job['success_count'] : null,
+            isset($job['failed_count']) ? (int) $job['failed_count'] : null
+        );
+    }
+
+    private function syncUploadFileStatusByJobToken(string $jobToken): void
+    {
+        $job = $this->findJobByToken($jobToken);
+        if ($job === null) {
+            return;
+        }
+
+        $this->syncUploadFileStatus((string) ($job['batch_id'] ?? ''), $jobToken);
+    }
+
+    private function trackedFileStatusFromJob(array $job): string
+    {
+        $jobStatus = strtolower(trim((string) ($job['status'] ?? 'uploaded')));
+        $totalRequests = max(0, (int) ($job['total_requests'] ?? 0));
+        $processedRequests = max(0, (int) ($job['processed_requests'] ?? 0));
+        $successCount = max(0, (int) ($job['success_count'] ?? 0));
+        $failedCount = max(0, (int) ($job['failed_count'] ?? 0));
+
+        if (in_array($jobStatus, ['queued', 'processing'], true)) {
+            return 'Processing';
+        }
+
+        if ($totalRequests > 0 && $processedRequests >= $totalRequests) {
+            if ($failedCount === 0 && $successCount > 0) {
+                return 'Completed';
+            }
+
+            if ($successCount === 0 && $failedCount > 0) {
+                return 'Failed';
+            }
+
+            if ($successCount > 0 && $failedCount > 0) {
+                return 'Partial';
+            }
+        }
+
+        return 'Uploaded';
     }
 
     private function decodeJsonArray(mixed $value): array
