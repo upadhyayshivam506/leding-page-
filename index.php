@@ -14,6 +14,23 @@ if ($scriptName !== '/' && str_starts_with($path, $scriptName)) {
 
 $path = '/' . ltrim($path, '/');
 $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
+
+if (in_array($method, ['POST', 'PUT', 'PATCH', 'DELETE'], true) && !verify_csrf_request()) {
+    if (expects_json_response()) {
+        http_response_code(419);
+        header('Content-Type: application/json; charset=UTF-8');
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Your session has expired. Refresh the page and try again.',
+        ]);
+        exit;
+    }
+
+    flash('Your session has expired. Refresh the page and try again.');
+    $redirectPath = referer_path() ?? request_path();
+    redirect(ltrim($redirectPath, '/'));
+}
+
 $routeKey = $method . ' ' . $path;
 
 if (!isset($router[$routeKey])) {

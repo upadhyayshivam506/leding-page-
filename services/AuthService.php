@@ -4,68 +4,99 @@ declare(strict_types=1);
 
 namespace Services;
 
-use Models\AdminUser;
+use Models\User;
 use PDOException;
 
 final class AuthService
 {
-    public function __construct(private readonly AdminUser $adminUser = new AdminUser())
+    public function __construct(private readonly User $users = new User())
     {
     }
 
-    public function attempt(string $email, string $password): bool
+    public function initialize(): void
     {
         try {
-            $admin = $this->adminUser->findByEmail($email);
+            $this->users->ensureSetup();
         } catch (PDOException) {
-            return $this->attemptEnvFallback($email, $password);
+            // Best effort only. The login page can still render even if the database is unavailable.
+        }
+    }
+
+    public function authenticate(string $email, string $password): ?array
+    {
+        try {
+            $user = $this->users->findByEmail($email);
+        } catch (PDOException) {
+            return null;
         }
 
-        if ($admin !== null) {
-            $storedPassword = (string) ($admin['password'] ?? '');
+        if ($user === null) {
+            return null;
+        }
 
-            if ($storedPassword !== '' && password_verify($password, $storedPassword)) {
-                return true;
+        $storedPasswordHash = (string) ($user['password_hash'] ?? '');
+        if ($storedPasswordHash === '' || !password_verify($password, $storedPasswordHash)) {
+            return null;
+        }
+
+        if (password_needs_rehash($storedPasswordHash, PASSWORD_BCRYPT)) {
+            try {
+                $rehash = password_hash($password, PASSWORD_BCRYPT);
+                $this->users->updatePasswordHash((int) ($user['id'] ?? 0), $rehash);
+                $user['password_hash'] = $rehash;
+            } catch (PDOException) {
+                // Best effort only. Existing hash remains valid for this request.
             }
         }
 
-        return $this->attemptEnvFallback($email, $password);
+        return $user;
     }
 
-    private function attemptEnvFallback(string $email, string $password): bool
+    public function login(array $user): void
     {
-        $configuredEmail = env('ADMIN_EMAIL');
-        $configuredPassword = env('ADMIN_PASSWORD');
+        session_regenerate_id(true);
 
-        if ($configuredEmail === null || $configuredPassword === null) {
-            return false;
-        }
-
-        return hash_equals(strtolower($configuredEmail), strtolower(trim($email)))
-            && hash_equals($configuredPassword, $password);
-    }
-
-    public function login(string $email): void
-    {
         $_SESSION['admin'] = [
-            'email' => $email,
+            'id' => (int) ($user['id'] ?? 0),
+            'email' => strtolower(trim((string) ($user['email'] ?? ''))),
             'logged_in_at' => date('Y-m-d H:i:s'),
         ];
     }
 
     public function logout(): void
     {
-        unset($_SESSION['admin']);
+        $_SESSION = [];
         session_regenerate_id(true);
     }
 
     public function check(): bool
     {
-        return isset($_SESSION['admin']['email']);
+        return isset($_SESSION['admin']['id'], $_SESSION['admin']['email']);
     }
 
     public function user(): ?array
     {
-        return $_SESSION['admin'] ?? null;
+        if (!$this->check()) {
+            return null;
+        }
+
+        return $_SESSION['admin'];
+    }
+
+    public function updatePassword(int $userId, string $currentPassword, string $newPassword): bool
+    {
+        $user = $this->users->findById($userId);
+        if ($user === null) {
+            return false;
+        }
+
+        $storedPasswordHash = (string) ($user['password_hash'] ?? '');
+        if ($storedPasswordHash === '' || !password_verify($currentPassword, $storedPasswordHash)) {
+            return false;
+        }
+
+        $this->users->updatePasswordHash($userId, password_hash($newPassword, PASSWORD_BCRYPT));
+
+        return true;
     }
 }

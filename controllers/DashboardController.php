@@ -811,12 +811,19 @@ final class DashboardController
     public function systemConfig(): void
     {
         $user = $this->guard();
+        $errors = validation_errors();
+
         $this->renderAdminPage($user, 'system-config', 'systemconfig/system-config', [
             'title' => e('System Config'),
             'page_kicker' => e('Platform controls'),
             'page_title' => e('System Config'),
             'page_description' => e('Use this page for environment-level settings, database options, upload rules, and system-wide controls.'),
-            'flash_alert' => '',
+            'flash_alert' => render_alert(flash(), 'dashboard-alert'),
+            'change_password_action' => e(app_url('system-config/change-password')),
+            'account_email' => e((string) ($user['email'] ?? env('ADMIN_EMAIL', 'admin@gmail.com'))),
+            'current_password_error' => e((string) ($errors['current_password'] ?? '')),
+            'new_password_error' => e((string) ($errors['new_password'] ?? '')),
+            'confirm_password_error' => e((string) ($errors['confirm_password'] ?? '')),
         ]);
     }
 
@@ -961,6 +968,7 @@ final class DashboardController
     private function uploadButtonHtml(): string
     {
         return '<form action="' . e(app_url('leads/upload')) . '" method="post" enctype="multipart/form-data" class="upload-form" data-upload-form>'
+            . csrf_field()
             . '<input type="hidden" name="parsed_rows_json" value="" data-upload-rows-json>'
             . '<input type="hidden" name="parsed_headers_json" value="" data-upload-headers-json>'
             . '<label class="panel-link topbar-action-link upload-trigger leads-action-button">Upload Excel File<input type="file" name="lead_file" accept=".xls,.xlsx,.csv" class="d-none" data-upload-input></label>'
@@ -2009,6 +2017,8 @@ final class DashboardController
         $base = [
             'app_name' => e(env('APP_NAME', 'Leads API Project')),
             'logout_action' => e(app_url('logout')),
+            'csrf_token' => e(csrf_token()),
+            'csrf_field' => csrf_field(),
             'css_url' => e(asset('css/app.css')),
             'js_url' => e(asset('js/app.js')),
             'user_email' => e((string) ($user['email'] ?? '')),
@@ -2094,6 +2104,11 @@ final class DashboardController
             'api_duration_selection_value' => '0.35',
             'fetch_colleagues_url' => e(app_url('api/fetch-colleagues.php')),
             'assign_colleagues_url' => e(app_url('api/push-leads.php')),
+            'change_password_action' => e(app_url('system-config/change-password')),
+            'account_email' => '',
+            'current_password_error' => '',
+            'new_password_error' => '',
+            'confirm_password_error' => '',
         ];
 
         return array_merge($base, $overrides);

@@ -1,3 +1,26 @@
+-- Create table: users
+CREATE TABLE `users` (
+  `id` BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+  `email` VARCHAR(190) NOT NULL,
+  `password_hash` VARCHAR(255) NOT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `users_email_unique` (`email`)
+
+) ENGINE=InnoDB
+DEFAULT CHARSET=utf8mb4
+COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO `users` (`email`, `password_hash`, `created_at`, `updated_at`)
+SELECT 'admin@gmail.com', '$2y$10$JaLvQRq42uANfmHPSoU51uYmAPqUlHlcgBnrQ5nF59ZELh/bluq/q', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM `users`
+  WHERE `email` = 'admin@gmail.com'
+);
+
 -- Create table: leads
 CREATE TABLE `leads` (
   `id` BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,

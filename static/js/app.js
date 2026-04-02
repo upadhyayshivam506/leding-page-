@@ -150,7 +150,20 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function fetchJson(url, options) {
-        return fetch(url, options).then(function (response) {
+        var requestOptions = options || {};
+        var method = String(requestOptions.method || 'GET').toUpperCase();
+        var headers = new Headers(requestOptions.headers || {});
+        var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+        var csrfToken = csrfMeta ? csrfMeta.getAttribute('content') || '' : '';
+
+        headers.set('Accept', 'application/json');
+        if (csrfToken && method !== 'GET' && method !== 'HEAD') {
+            headers.set('X-CSRF-Token', csrfToken);
+        }
+
+        requestOptions.headers = headers;
+
+        return fetch(url, requestOptions).then(function (response) {
             return response.text().then(function (text) {
                 var payload;
                 try {

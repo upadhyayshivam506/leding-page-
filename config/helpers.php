@@ -62,6 +62,53 @@ function render_alert(?array $flash, string $className): string
     return '<div class="alert alert-' . $typeClass . ' ' . $className . '" role="alert">' . e((string) $flash['message']) . '</div>';
 }
 
+function csrf_token(): string
+{
+    if (!isset($_SESSION['_csrf_token']) || !is_string($_SESSION['_csrf_token']) || $_SESSION['_csrf_token'] === '') {
+        $_SESSION['_csrf_token'] = bin2hex(random_bytes(32));
+    }
+
+    return $_SESSION['_csrf_token'];
+}
+
+function csrf_field(): string
+{
+    return '<input type="hidden" name="_csrf_token" value="' . e(csrf_token()) . '">';
+}
+
+function verify_csrf_token(?string $token): bool
+{
+    $sessionToken = $_SESSION['_csrf_token'] ?? null;
+
+    return is_string($token)
+        && is_string($sessionToken)
+        && $token !== ''
+        && hash_equals($sessionToken, $token);
+}
+
+function verify_csrf_request(): bool
+{
+    $token = $_POST['_csrf_token'] ?? null;
+
+    if (!is_string($token) || $token === '') {
+        $headerToken = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? null;
+        $token = is_string($headerToken) ? $headerToken : null;
+    }
+
+    return verify_csrf_token($token);
+}
+
+function expects_json_response(): bool
+{
+    $contentType = strtolower((string) ($_SERVER['CONTENT_TYPE'] ?? ''));
+    $accept = strtolower((string) ($_SERVER['HTTP_ACCEPT'] ?? ''));
+    $requestedWith = strtolower((string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? ''));
+
+    return str_contains($contentType, 'application/json')
+        || str_contains($accept, 'application/json')
+        || $requestedWith === 'xmlhttprequest';
+}
+
 function render_template(string $template, array $data = []): string
 {
     $htmlTemplate = base_path('Templates/' . $template . '.html');
@@ -128,9 +175,45 @@ function clear_old(): void
     unset($_SESSION['old']);
 }
 
+function validation_errors(?array $errors = null): array
+{
+    if ($errors !== null) {
+        $_SESSION['validation_errors'] = $errors;
+
+        return [];
+    }
+
+    $stored = $_SESSION['validation_errors'] ?? [];
+    unset($_SESSION['validation_errors']);
+
+    return is_array($stored) ? $stored : [];
+}
+
 function request_path(): string
 {
     $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
+    $scriptName = dirname($_SERVER['SCRIPT_NAME'] ?? '') ?: '';
+
+    if ($scriptName !== '/' && str_starts_with($path, $scriptName)) {
+        $path = substr($path, strlen($scriptName)) ?: '/';
+    }
+
+    return '/' . ltrim($path, '/');
+}
+
+function referer_path(): ?string
+{
+    $referer = $_SERVER['HTTP_REFERER'] ?? '';
+    if (!is_string($referer) || trim($referer) === '') {
+        return null;
+    }
+
+    $path = parse_url($referer, PHP_URL_PATH);
+    if (!is_string($path) || trim($path) === '') {
+        return null;
+    }
+
+    $path = '/' . ltrim($path, '/');
     $scriptName = dirname($_SERVER['SCRIPT_NAME'] ?? '') ?: '';
 
     if ($scriptName !== '/' && str_starts_with($path, $scriptName)) {

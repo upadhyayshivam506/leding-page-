@@ -30,6 +30,24 @@ require_once dirname(__DIR__) . '/helpers/colleague-helper.php';
 
 Config\Env::load(dirname(__DIR__) . '/.env');
 
+$isHttps = (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off')
+    || (string) ($_SERVER['SERVER_PORT'] ?? '') === '443';
+
+ini_set('session.use_strict_mode', '1');
+ini_set('session.cookie_httponly', '1');
+ini_set('session.cookie_samesite', 'Lax');
+if ($isHttps) {
+    ini_set('session.cookie_secure', '1');
+}
+
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path' => '/',
+    'secure' => $isHttps,
+    'httponly' => true,
+    'samesite' => 'Lax',
+]);
+
 $sessionPath = env('SESSION_SAVE_PATH');
 if ($sessionPath === null || trim($sessionPath) === '') {
     $sessionPath = dirname(__DIR__) . '/uploads/sessions';

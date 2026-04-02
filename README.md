@@ -3,7 +3,7 @@
 Starter scaffold for the Leads API Project with:
 
 - MilesWeb-friendly PHP folder structure
-- Admin authentication using MySQL with `.env`-based configuration
+- Admin authentication using MySQL with a database-backed admin account
 - Session-protected dashboard
 - Responsive login page built with HTML, CSS, JavaScript, and Bootstrap 5
 
@@ -97,9 +97,9 @@ If `SESSION_SAVE_PATH` is empty, the app automatically stores sessions in `uploa
 
 ## Admin login
 
-Default fallback login from `.env`:
+Default admin login after the schema is installed:
 
-- Email: `admin@example.com`
-- Password: `ChangeThisPassword123`
+- Email: `admin@gmail.com`
+- Password: `admin@123`
 
-The app first checks the `admins` table in MySQL. If the database is unavailable, it falls back to `ADMIN_EMAIL` and `ADMIN_PASSWORD` from `.env`.
+The app creates the `users` table and seeds the default admin once. Authentication reads the hashed password from MySQL, while `.env` only keeps the admin email and database connection settings.

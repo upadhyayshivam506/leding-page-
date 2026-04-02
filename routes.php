@@ -10,6 +10,7 @@ return [
     'GET /login' => [AuthController::class, 'showLogin'],
     'POST /login' => [AuthController::class, 'login'],
     'POST /logout' => [AuthController::class, 'logout'],
+    'POST /system-config/change-password' => [AuthController::class, 'changePassword'],
     'GET /dashboard' => [DashboardController::class, 'index'],
     'GET /api/dashboard/upload-history' => [DashboardController::class, 'dashboardUploadHistory'],
     'GET /dashboard/uploads/view' => [DashboardController::class, 'viewUploadedFile'],
