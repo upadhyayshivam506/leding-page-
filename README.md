@@ -32,18 +32,21 @@ Use any PHP server that points to this folder, or run it through XAMPP/Apache.
 4. Copy `.env.example` to `.env` and keep the local XAMPP values:
 
 ```env
+APP_URL="http://localhost:8080/leding-page-"
+ADMIN_EMAIL="admin@gmail.com"
+ADMIN_PASSWORD="admin@123"
 DB_HOST="127.0.0.1"
 DB_PORT="3306"
 DB_NAME="lead_management"
 DB_USER="root"
 DB_PASSWORD=""
-DB_SOCKET=""
+DB_SOCKET="/Applications/XAMPP/xamppfiles/var/mysql/mysql.sock"
 SESSION_SAVE_PATH=""
 ```
 
 5. Create the `lead_management` database.
 6. Import `database/schema.sql` into phpMyAdmin or MySQL.
-7. Open `http://localhost/leding-page-/login`.
+7. Open `http://localhost:8080/leding-page-/login`.
 
 If Apache rewrite rules are enabled, the included `.htaccess` will route requests through `index.php`.
 
@@ -54,10 +57,10 @@ On macOS XAMPP, this project now prefers the TCP host from `.env` and only uses 
 If PHP is installed on your machine, you can also run:
 
 ```bash
-php -S localhost:8000
+php -S localhost:8080
 ```
 
-Then open `http://localhost:8000/login`.
+Then open `http://localhost:8080/login`.
 
 ## Database settings
 
@@ -66,17 +69,20 @@ The app reads database settings from `.env` through `config/Database.php`. You d
 ### Local XAMPP example
 
 ```env
+APP_URL="http://localhost:8080/leding-page-"
+ADMIN_EMAIL="admin@gmail.com"
+ADMIN_PASSWORD="admin@123"
 DB_HOST="127.0.0.1"
 DB_PORT="3306"
 DB_NAME="lead_management"
 DB_USER="root"
 DB_PASSWORD=""
-DB_SOCKET=""
+DB_SOCKET="/Applications/XAMPP/xamppfiles/var/mysql/mysql.sock"
 DB_CHARSET="utf8mb4"
 SESSION_SAVE_PATH=""
 ```
 
-XAMPP on Windows usually works with `127.0.0.1` and port `3306`. Keep `DB_SOCKET` empty unless you were given a Unix socket path.
+XAMPP on Windows usually works with `127.0.0.1` and port `3306`. On macOS XAMPP, use `/Applications/XAMPP/xamppfiles/var/mysql/mysql.sock` for `DB_SOCKET`.
 
 ### MilesWeb example
 
@@ -100,6 +106,6 @@ If `SESSION_SAVE_PATH` is empty, the app automatically stores sessions in `uploa
 Default admin login after the schema is installed:
 
 - Email: `admin@gmail.com`
-- Password: `admin@123`
+- Password: `admin@123` or the value of `ADMIN_PASSWORD` in `.env`
 
-The app creates the `users` table and seeds the default admin once. Authentication reads the hashed password from MySQL, while `.env` only keeps the admin email and database connection settings.
+The app creates the `users` table and seeds the default admin once. Authentication reads the hashed password from MySQL, and the initial seed now uses `ADMIN_EMAIL` and `ADMIN_PASSWORD` from `.env`.

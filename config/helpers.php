@@ -25,6 +25,14 @@ function base_path(string $path = ''): string
 
 function app_url(string $path = ''): string
 {
+    $configuredAppUrl = env('APP_URL');
+    if ($configuredAppUrl !== null) {
+        $baseUrl = rtrim($configuredAppUrl, '/');
+        $cleanPath = ltrim($path, '/');
+
+        return $cleanPath === '' ? $baseUrl . '/' : $baseUrl . '/' . $cleanPath;
+    }
+
     $scriptName = $_SERVER['SCRIPT_NAME'] ?? '/index.php';
     $baseDir = rtrim(str_replace('\\', '/', dirname($scriptName)), '/');
     $baseDir = $baseDir === '.' ? '' : $baseDir;

@@ -192,8 +192,13 @@ final class User
     private function seedDefaultAdmin(PDO $connection): void
     {
         $email = $this->normalizeEmail(env('ADMIN_EMAIL', 'admin@gmail.com') ?? 'admin@gmail.com');
+        $password = env('ADMIN_PASSWORD', 'admin@123') ?? 'admin@123';
         if ($email === '') {
             $email = 'admin@gmail.com';
+        }
+
+        if ($password === '') {
+            $password = 'admin@123';
         }
 
         try {
@@ -212,7 +217,7 @@ final class User
             );
             $insert->execute([
                 'email' => $email,
-                'password_hash' => password_hash('admin@123', PASSWORD_BCRYPT),
+                'password_hash' => password_hash($password, PASSWORD_BCRYPT),
             ]);
         } catch (PDOException) {
             // Best effort for installations that are still provisioning.
