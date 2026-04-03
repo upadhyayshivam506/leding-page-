@@ -11,7 +11,7 @@ try {
 
     echo json_encode([
         'success' => true,
-        'data' => all_colleagues(),
+        'data' => public_colleagues(),
     ]);
 } catch (RuntimeException $exception) {
     http_response_code(401);

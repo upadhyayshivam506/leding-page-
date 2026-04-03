@@ -88,18 +88,32 @@ function colleague_catalog(): array
                 'name' => 'Pune Business School',
                 'api_endpoint' => 'https://thirdpartyapi.extraaedge.com/api/SaveRequest/',
                 'api_token' => 'PCET-19-08-2022',
+                'recommended_source' => 'pcet',
+                'external_college_id' => '',
             ],
+            // College Configuration: PCU College
+            // API URL: https://api.in8.nopaperforms.com/dataporting/5674/career_mantra
+            // Secret Key: 0ac841e88c5faf0f145087487174cc29
+            // Recommended Source: career_mantra
+            // College ID: 5674
+            // Default Region: Western
+            // Note: Use this configuration when pushing leads to PCU College API.
+            // Future colleges can be added using the same structure.
             'PCU' => [
                 'id' => 'PCU',
-                'name' => 'Pimpri Chinchwad University',
-                'api_endpoint' => '',
-                'api_token' => '',
+                'name' => 'PCU College',
+                'api_endpoint' => 'https://api.in8.nopaperforms.com/dataporting/5674/career_mantra',
+                'api_token' => '0ac841e88c5faf0f145087487174cc29',
+                'recommended_source' => 'career_mantra',
+                'external_college_id' => '5674',
             ],
             'Lexicon' => [
                 'id' => 'Lexicon',
                 'name' => 'Lexicon Management Institute',
                 'api_endpoint' => 'https://api.nopaperforms.com/dataporting/375/career_mantra',
                 'api_token' => 'e1c2e501cb7b5d4ba5f0eef5a7d350d0',
+                'recommended_source' => 'career_mantra',
+                'external_college_id' => '375',
             ],
         ],
     ];

@@ -1,0 +1,127 @@
+<section class="page-heading">
+    <p class="hero-label">{{page_kicker}}</p>
+    <h2>{{page_title}}</h2>
+</section>
+
+<section class="mapping-stepper" data-stepper data-current-step="{{mapping_step}}">
+    <div class="mapping-step" data-step-id="upload"><span>1</span><strong>Upload</strong></div>
+    <div class="mapping-step" data-step-id="region"><span>2</span><strong>Region</strong></div>
+    <div class="mapping-step" data-step-id="courses-convert"><span>3</span><strong>Courses Convert</strong></div>
+    <div class="mapping-step" data-step-id="api-duration"><span>4</span><strong>API Duration</strong></div>
+</section>
+
+<section class="mapping-course-convert-page" data-courses-convert-page data-region-rows="{{region_rows_attr_json}}" data-region-summary="{{region_summary_attr_json}}" data-colleges="{{colleges_catalog_attr_json}}" data-confirm-url="{{confirm_courses_convert_url}}" data-api-duration-url="{{courses_convert_api_duration_url}}" data-batch-id="{{uploaded_batch_id}}">
+    <section class="mapping-preview-summary">
+        <article class="info-panel">
+            <p class="hero-label">Current Batch</p>
+            <h3>{{uploaded_file_name}}</h3>
+            <p>Detected region, course, and specialization values are loaded from the uploaded leads and reflected in the converted preview below.</p>
+        </article>
+
+        <article class="info-panel">
+            <p class="hero-label">Workflow</p>
+            <h3>Courses Convert</h3>
+            <div class="mapping-summary-list">
+                <div><span>1</span><strong>Select regions</strong></div>
+                <div><span>2</span><strong>Convert course rows</strong></div>
+                <div><span>3</span><strong>Set specialization rows</strong></div>
+                <div><span>4</span><strong>Confirm mapping</strong></div>
+            </div>
+        </article>
+    </section>
+
+    <section class="mapping-course-convert-grid">
+        <article class="info-panel">
+            <p class="hero-label">Card 1</p>
+            <h3>Select Region</h3>
+            <p>Select a single region or multiple regions. The detected tables and preview refresh immediately from this selection.</p>
+            <div class="mapping-region-picker" data-convert-region-picker></div>
+        </article>
+
+        <article class="info-panel">
+            <p class="hero-label">Card 2</p>
+            <h3>Detected Course Values from Convert</h3>
+            <p>The system suggests detected courses from the uploaded leads for the selected regions. Leave Convert To Course empty to keep the original course.</p>
+            <div class="table-responsive mapping-convert-table-wrap">
+                <table class="table admin-table align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Detected Course</th>
+                            <th>Convert To Course</th>
+                        </tr>
+                    </thead>
+                    <tbody data-course-conversion-body></tbody>
+                </table>
+            </div>
+        </article>
+
+        <article class="info-panel">
+            <p class="hero-label">Card 3</p>
+            <h3>Select Specialization</h3>
+            <p>Suggested specialization rows are grouped by detected course. Leave the field empty to keep the original specialization from the uploaded data.</p>
+            <div class="table-responsive mapping-convert-table-wrap">
+                <table class="table admin-table align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Course</th>
+                            <th>Specialization</th>
+                        </tr>
+                    </thead>
+                    <tbody data-specialization-conversion-body></tbody>
+                </table>
+            </div>
+        </article>
+
+        <article class="info-panel">
+            <p class="hero-label">Card 4</p>
+            <h3>Select Colleges</h3>
+            <p>Select one or more colleges. The selected colleges appear directly in the converted preview table.</p>
+            <label class="form-label">
+                Colleges
+                <select class="assignment-select" data-convert-colleges multiple></select>
+            </label>
+            <div class="mapping-chip-list" data-convert-college-chip-list></div>
+        </article>
+    </section>
+
+    <article class="table-panel mapping-convert-preview-panel">
+        <div class="panel-head panel-head--table">
+            <div>
+                <h3>Preview of Converted Leads Data</h3>
+                <p class="table-subtext">Course, specialization, region, and selected college updates are reflected here immediately.</p>
+            </div>
+            <span class="panel-chip" data-convert-preview-count>0 rows</span>
+        </div>
+
+        <div class="mapping-convert-table-tools">
+            <label class="form-label">
+                Search
+                <input type="search" class="assignment-select" data-convert-search placeholder="Search converted leads">
+            </label>
+            <label class="form-label">
+                Rows
+                <select class="assignment-select" data-convert-page-size>
+                    <option value="10">10</option>
+                    <option value="20" selected>20</option>
+                    <option value="50">50</option>
+                </select>
+            </label>
+        </div>
+
+        <div class="table-responsive mapping-convert-preview-scroll">
+            <table class="table admin-table align-middle mb-0">
+                <thead data-convert-preview-head></thead>
+                <tbody data-convert-preview-body></tbody>
+            </table>
+        </div>
+        <div class="mapping-convert-pagination" data-convert-pagination></div>
+    </article>
+
+    <div class="mapping-actions mapping-actions--footer">
+        <p class="mapping-preview-message d-none mapping-course-page__message" data-convert-message></p>
+        <div class="mapping-course-page__action-row">
+            <a href="{{mapping_region_url}}" class="panel-link topbar-action-link">Back to Region Mapping</a>
+            <button type="button" class="btn dashboard-logout" data-confirm-courses-convert>Confirm Mapping</button>
+        </div>
+    </div>
+</section>

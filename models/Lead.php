@@ -269,6 +269,57 @@ final class Lead
         return is_array($rows) ? $rows : [];
     }
 
+    public function findByIds(array $ids): array
+    {
+        $normalizedIds = array_values(array_unique(array_filter(array_map(
+            static fn ($id): int => (int) $id,
+            $ids
+        ), static fn (int $id): bool => $id > 0)));
+
+        if ($normalizedIds === []) {
+            return [];
+        }
+
+        $placeholders = [];
+        $bindings = [];
+        foreach ($normalizedIds as $index => $id) {
+            $placeholder = ':id_' . $index;
+            $placeholders[] = $placeholder;
+            $bindings[$placeholder] = $id;
+        }
+
+        $statement = Database::connection()->prepare(
+            'SELECT ' . self::LIST_COLUMNS . '
+             FROM leads
+             WHERE id IN (' . implode(', ', $placeholders) . ')'
+        );
+
+        foreach ($bindings as $placeholder => $id) {
+            $statement->bindValue($placeholder, $id, PDO::PARAM_INT);
+        }
+
+        $statement->execute();
+        $rows = $statement->fetchAll(PDO::FETCH_ASSOC);
+
+        if (!is_array($rows)) {
+            return [];
+        }
+
+        $indexed = [];
+        foreach ($rows as $row) {
+            $indexed[(int) ($row['id'] ?? 0)] = $row;
+        }
+
+        $ordered = [];
+        foreach ($normalizedIds as $id) {
+            if (isset($indexed[$id])) {
+                $ordered[] = $indexed[$id];
+            }
+        }
+
+        return $ordered;
+    }
+
     public function countDistinctBatches(): int
     {
         $statement = Database::connection()->query('SELECT COUNT(DISTINCT batch_id) FROM leads');

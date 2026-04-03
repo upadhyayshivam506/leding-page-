@@ -322,9 +322,20 @@ document.addEventListener('DOMContentLoaded', function () {
         var leadsDateToInput = leadsFilterForm ? leadsFilterForm.querySelector('[data-filter-date-to]') : null;
         var leadsResetButton = leadsFilterForm ? leadsFilterForm.querySelector('[data-leads-reset]') : null;
         var exportButton = document.querySelector('[data-export-leads]');
+        var sendToCollegeButton = document.querySelector('[data-open-send-college-modal]');
+        var sendToCollegeMessage = document.querySelector('[data-leads-send-message]');
+        var sendToCollegeModal = document.querySelector('[data-leads-send-college-modal]');
+        var closeSendCollegeButtons = sendToCollegeModal ? Array.from(sendToCollegeModal.querySelectorAll('[data-close-send-college-modal]')) : [];
+        var sendCollegeSelectionSummary = sendToCollegeModal ? sendToCollegeModal.querySelector('[data-send-college-selection-summary]') : null;
+        var sendCollegeSearchInput = sendToCollegeModal ? sendToCollegeModal.querySelector('[data-college-search-input]') : null;
+        var sendCollegeSelect = sendToCollegeModal ? sendToCollegeModal.querySelector('[data-college-single-select]') : null;
+        var sendCollegeModalMessage = sendToCollegeModal ? sendToCollegeModal.querySelector('[data-send-college-modal-message]') : null;
+        var confirmSendCollegeButton = sendToCollegeModal ? sendToCollegeModal.querySelector('[data-confirm-send-college]') : null;
         var multiselects = leadsFilterForm ? Array.from(leadsFilterForm.querySelectorAll('[data-filter-multiselect]')) : [];
+        var collegesCatalog = readJsonAttribute(leadsPageRoot, 'data-colleges');
         var apiUrl = leadsPageRoot.getAttribute('data-leads-api-url') || '/api/leads';
         var exportUrl = leadsPageRoot.getAttribute('data-leads-export-url') || '/api/leads/export';
+        var sendSelectedLeadsUrl = leadsPageRoot.getAttribute('data-send-selected-leads-url') || '';
         var leadPushStatusUrl = leadsPageRoot.getAttribute('data-lead-push-status-url') || '';
         var currentPage = Number(new URL(window.location.href).searchParams.get('page') || '1');
         var latestRequestId = 0;
@@ -335,6 +346,143 @@ document.addEventListener('DOMContentLoaded', function () {
         var leadUploadProgressChip = document.querySelector('[data-lead-upload-progress-chip]');
         var leadUploadProgressBar = document.querySelector('[data-lead-upload-progress-bar]');
         var activeLeadPushTimer = 0;
+        var selectedLeadIds = new Set();
+
+        function setSendToCollegeMessage(message, isError) {
+            if (!sendToCollegeMessage) {
+                return;
+            }
+
+            if (!message) {
+                sendToCollegeMessage.textContent = '';
+                sendToCollegeMessage.classList.add('d-none');
+                sendToCollegeMessage.classList.remove('leads-filter-message--error', 'leads-filter-message--success');
+                return;
+            }
+
+            sendToCollegeMessage.textContent = message;
+            sendToCollegeMessage.classList.remove('d-none');
+            sendToCollegeMessage.classList.toggle('leads-filter-message--error', !!isError);
+            sendToCollegeMessage.classList.toggle('leads-filter-message--success', !isError);
+        }
+
+        function setSendCollegeModalMessage(message, isError) {
+            if (!sendCollegeModalMessage) {
+                return;
+            }
+
+            if (!message) {
+                sendCollegeModalMessage.textContent = '';
+                sendCollegeModalMessage.classList.add('d-none');
+                sendCollegeModalMessage.classList.remove('mapping-preview-message--error', 'mapping-preview-message--success');
+                return;
+            }
+
+            sendCollegeModalMessage.textContent = message;
+            sendCollegeModalMessage.classList.remove('d-none');
+            sendCollegeModalMessage.classList.toggle('mapping-preview-message--error', !!isError);
+            sendCollegeModalMessage.classList.toggle('mapping-preview-message--success', !isError);
+        }
+
+        function selectedLeadIdList() {
+            return Array.from(selectedLeadIds).map(function (value) {
+                return Number(value || 0);
+            }).filter(function (value) {
+                return value > 0;
+            });
+        }
+
+        function visibleLeadCheckboxes() {
+            return leadsTableBody ? Array.from(leadsTableBody.querySelectorAll('[data-lead-select-row]')) : [];
+        }
+
+        function syncLeadSelectionUi() {
+            var selectedIds = selectedLeadIdList();
+            var allToggle = leadsTableHead ? leadsTableHead.querySelector('[data-lead-select-all]') : null;
+            var visibleCheckboxes = visibleLeadCheckboxes();
+            var visibleChecked = visibleCheckboxes.filter(function (checkbox) {
+                return checkbox.checked;
+            }).length;
+
+            if (allToggle) {
+                allToggle.checked = visibleCheckboxes.length > 0 && visibleChecked === visibleCheckboxes.length;
+                allToggle.indeterminate = visibleChecked > 0 && visibleChecked < visibleCheckboxes.length;
+            }
+
+            if (sendToCollegeButton) {
+                sendToCollegeButton.disabled = selectedIds.length === 0;
+            }
+
+            if (sendCollegeSelectionSummary) {
+                sendCollegeSelectionSummary.textContent = selectedIds.length
+                    ? (String(selectedIds.length) + ' lead' + (selectedIds.length === 1 ? '' : 's') + ' selected for direct API sending.')
+                    : 'No leads selected.';
+            }
+        }
+
+        function restoreVisibleLeadSelection() {
+            visibleLeadCheckboxes().forEach(function (checkbox) {
+                checkbox.checked = selectedLeadIds.has(String(checkbox.value || ''));
+            });
+            syncLeadSelectionUi();
+        }
+
+        function renderCollegeOptions(searchTerm) {
+            if (!sendCollegeSelect) {
+                return;
+            }
+
+            var query = String(searchTerm || '').trim().toLowerCase();
+            var currentValue = sendCollegeSelect.value || '';
+            var filtered = (Array.isArray(collegesCatalog) ? collegesCatalog : []).filter(function (college) {
+                var label = String(college && college.name || college && college.id || '').toLowerCase();
+                return !query || label.indexOf(query) !== -1;
+            });
+
+            sendCollegeSelect.innerHTML = filtered.length
+                ? filtered.map(function (college) {
+                    var value = college.id || '';
+                    var label = college.name || value;
+                    var selected = value === currentValue ? ' selected' : '';
+                    return '<option value="' + escapeHtml(value) + '"' + selected + '>' + escapeHtml(label) + '</option>';
+                }).join('')
+                : '<option value="">No colleges found</option>';
+
+            if (filtered.length && !sendCollegeSelect.value) {
+                sendCollegeSelect.selectedIndex = 0;
+            }
+
+            if (confirmSendCollegeButton) {
+                confirmSendCollegeButton.disabled = filtered.length === 0;
+            }
+        }
+
+        function openSendCollegeModal() {
+            if (!sendToCollegeModal) {
+                return;
+            }
+
+            renderCollegeOptions(sendCollegeSearchInput ? sendCollegeSearchInput.value : '');
+            setSendCollegeModalMessage('', false);
+            syncLeadSelectionUi();
+            sendToCollegeModal.classList.remove('d-none');
+            sendToCollegeModal.setAttribute('aria-hidden', 'false');
+            document.body.classList.add('modal-is-open');
+            if (sendCollegeSearchInput) {
+                sendCollegeSearchInput.focus();
+            }
+        }
+
+        function closeSendCollegeModal() {
+            if (!sendToCollegeModal) {
+                return;
+            }
+
+            sendToCollegeModal.classList.add('d-none');
+            sendToCollegeModal.setAttribute('aria-hidden', 'true');
+            document.body.classList.remove('modal-is-open');
+            setSendCollegeModalMessage('', false);
+        }
 
         function setLeadMessage(message, isError) {
             if (!leadsFilterMessage) {
@@ -614,6 +762,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     leadsCount.textContent = payload.data && payload.data.count_label ? payload.data.count_label : '0 leads';
                 }
 
+                restoreVisibleLeadSelection();
                 syncLeadUrl(state);
             }).catch(function (error) {
                 setLeadMessage(error.message || 'Unable to load leads right now.', true);
@@ -702,6 +851,36 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         }
 
+        if (leadsTableRoot) {
+            leadsTableRoot.addEventListener('change', function (event) {
+                var rowCheckbox = event.target.closest('[data-lead-select-row]');
+                if (rowCheckbox) {
+                    if (rowCheckbox.checked) {
+                        selectedLeadIds.add(String(rowCheckbox.value || ''));
+                    } else {
+                        selectedLeadIds.delete(String(rowCheckbox.value || ''));
+                    }
+                    setSendToCollegeMessage('', false);
+                    syncLeadSelectionUi();
+                    return;
+                }
+
+                var selectAllCheckbox = event.target.closest('[data-lead-select-all]');
+                if (selectAllCheckbox) {
+                    visibleLeadCheckboxes().forEach(function (checkbox) {
+                        checkbox.checked = !!selectAllCheckbox.checked;
+                        if (checkbox.checked) {
+                            selectedLeadIds.add(String(checkbox.value || ''));
+                        } else {
+                            selectedLeadIds.delete(String(checkbox.value || ''));
+                        }
+                    });
+                    setSendToCollegeMessage('', false);
+                    syncLeadSelectionUi();
+                }
+            });
+        }
+
         if (exportButton) {
             exportButton.addEventListener('click', function () {
                 var state = readLeadState(1);
@@ -744,6 +923,79 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
             });
         }
+
+        if (sendToCollegeButton) {
+            sendToCollegeButton.addEventListener('click', function () {
+                if (!selectedLeadIdList().length) {
+                    setSendToCollegeMessage('Select one or more leads before sending.', true);
+                    return;
+                }
+
+                setSendToCollegeMessage('', false);
+                openSendCollegeModal();
+            });
+        }
+
+        closeSendCollegeButtons.forEach(function (button) {
+            button.addEventListener('click', function () {
+                closeSendCollegeModal();
+            });
+        });
+
+        if (sendCollegeSearchInput) {
+            sendCollegeSearchInput.addEventListener('input', function () {
+                renderCollegeOptions(sendCollegeSearchInput.value);
+            });
+        }
+
+        if (confirmSendCollegeButton) {
+            confirmSendCollegeButton.addEventListener('click', function () {
+                var selectedIds = selectedLeadIdList();
+                var selectedCollegeId = sendCollegeSelect ? String(sendCollegeSelect.value || '').trim() : '';
+
+                if (!selectedIds.length) {
+                    setSendCollegeModalMessage('Select one or more leads before sending.', true);
+                    return;
+                }
+
+                if (!selectedCollegeId) {
+                    setSendCollegeModalMessage('Select one college before sending.', true);
+                    return;
+                }
+
+                confirmSendCollegeButton.disabled = true;
+                setSendCollegeModalMessage('Sending selected leads to the chosen college API...', false);
+
+                fetchJson(sendSelectedLeadsUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        selected_ids: selectedIds,
+                        college_id: selectedCollegeId
+                    })
+                }).then(function (payload) {
+                    closeSendCollegeModal();
+                    setSendToCollegeMessage(payload.message || 'Selected leads successfully sent to the college API.', false);
+                    selectedLeadIds.clear();
+                    restoreVisibleLeadSelection();
+                }).catch(function (error) {
+                    setSendCollegeModalMessage(error.message || 'Failed to send selected leads. Please try again.', true);
+                    setSendToCollegeMessage(error.message || 'Failed to send selected leads. Please try again.', true);
+                }).finally(function () {
+                    confirmSendCollegeButton.disabled = false;
+                });
+            });
+        }
+
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape' && sendToCollegeModal && !sendToCollegeModal.classList.contains('d-none')) {
+                closeSendCollegeModal();
+            }
+        });
+
+        restoreVisibleLeadSelection();
 
         try {
             var leadPageUrl = new URL(window.location.href);
@@ -815,216 +1067,423 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    var coursesMappingRoot = document.querySelector('[data-course-mapping-page]');
-    if (coursesMappingRoot) {
-        var rows = readJsonAttribute(coursesMappingRoot, 'data-region-rows');
-        var colleges = readJsonAttribute(coursesMappingRoot, 'data-colleges');
-        var headers = rows.length ? Object.keys(rows[0]) : defaultPreviewHeaders;
-        var grouped = groupRowsByRegion(rows);
-        var regionPicker = coursesMappingRoot.querySelector('[data-region-picker]');
-        var selectedRegionSections = coursesMappingRoot.querySelector('[data-selected-region-sections]');
-        var courseSelect = coursesMappingRoot.querySelector('[data-course-values]');
-        var specializationSelect = coursesMappingRoot.querySelector('[data-specialization-select]');
-        var collegeSelect = coursesMappingRoot.querySelector('[data-college-select]');
-        var courseChipList = coursesMappingRoot.querySelector('[data-course-chip-list]');
-        var collegeChipList = coursesMappingRoot.querySelector('[data-college-chip-list]');
-        var errorNode = coursesMappingRoot.querySelector('[data-course-mapping-error]');
-        var generateButton = coursesMappingRoot.querySelector('[data-generate-preview]');
-        var selectedRegions = regionOrder.slice();
-        var selectedCourses = [];
-        var selectedSpecialization = '';
-        var selectedColleges = [];
-
-        function selectedRows() {
-            return rows.filter(function (row) {
-                return selectedRegions.indexOf(row.Region) !== -1;
+    var coursesConvertRoot = document.querySelector('[data-courses-convert-page]');
+    if (coursesConvertRoot) {
+        var convertRows = readJsonAttribute(coursesConvertRoot, 'data-region-rows');
+        var convertSummary = readJsonAttribute(coursesConvertRoot, 'data-region-summary');
+        var convertColleges = readJsonAttribute(coursesConvertRoot, 'data-colleges');
+        var convertRegionPicker = coursesConvertRoot.querySelector('[data-convert-region-picker]');
+        var courseConversionBody = coursesConvertRoot.querySelector('[data-course-conversion-body]');
+        var specializationConversionBody = coursesConvertRoot.querySelector('[data-specialization-conversion-body]');
+        var convertCollegeSelect = coursesConvertRoot.querySelector('[data-convert-colleges]');
+        var convertCollegeChipList = coursesConvertRoot.querySelector('[data-convert-college-chip-list]');
+        var convertPreviewHead = coursesConvertRoot.querySelector('[data-convert-preview-head]');
+        var convertPreviewBody = coursesConvertRoot.querySelector('[data-convert-preview-body]');
+        var convertPreviewCount = coursesConvertRoot.querySelector('[data-convert-preview-count]');
+        var convertPagination = coursesConvertRoot.querySelector('[data-convert-pagination]');
+        var convertSearchInput = coursesConvertRoot.querySelector('[data-convert-search]');
+        var convertPageSizeSelect = coursesConvertRoot.querySelector('[data-convert-page-size]');
+        var convertMessage = coursesConvertRoot.querySelector('[data-convert-message]');
+        var confirmCoursesConvertButton = coursesConvertRoot.querySelector('[data-confirm-courses-convert]');
+        var convertPreviewHeaders = ['Batch ID', 'Lead ID', 'Name', 'Email', 'Phone', 'Region', 'Original Course', 'Converted Course', 'Specialization', 'Selected Colleges', 'Lead Status'];
+        var selectedConvertRegions = regionOrder.filter(function (region) {
+            return convertRows.some(function (row) {
+                return row.Region === region;
             });
+        });
+        var courseConversions = {};
+        var specializationOverrides = {};
+        var selectedConvertColleges = [];
+        var convertCurrentPage = 1;
+
+        if (!selectedConvertRegions.length) {
+            selectedConvertRegions = regionOrder.slice();
         }
 
-        function selectedCourseRows() {
-            return selectedRows().filter(function (row) {
-                return !selectedCourses.length || selectedCourses.indexOf(row.Course) !== -1;
-            });
-        }
-
-        function renderRegionPicker() {
-            if (!regionPicker) {
+        function setConvertMessage(message, isError) {
+            if (!convertMessage) {
                 return;
             }
 
-            regionPicker.innerHTML = regionOrder.map(function (region) {
-                var checked = selectedRegions.indexOf(region) !== -1;
-                return '<label class="mapping-region-option"><input type="checkbox" value="' + escapeHtml(region) + '"' + (checked ? ' checked' : '') + '> <span>' + escapeHtml(region) + '</span></label>';
+            if (!message) {
+                convertMessage.textContent = '';
+                convertMessage.classList.add('d-none');
+                convertMessage.classList.remove('mapping-preview-message--error', 'mapping-preview-message--success');
+                return;
+            }
+
+            convertMessage.textContent = message;
+            convertMessage.classList.remove('d-none');
+            convertMessage.classList.toggle('mapping-preview-message--error', !!isError);
+            convertMessage.classList.toggle('mapping-preview-message--success', !isError);
+        }
+
+        function detectedCoursesForSelectedRegions() {
+            var values = [];
+
+            convertRows.forEach(function (row) {
+                var region = row.Region || '';
+                var course = row.Course || '';
+                if (selectedConvertRegions.indexOf(region) !== -1 && course && values.indexOf(course) === -1) {
+                    values.push(course);
+                }
+            });
+
+            return values.sort();
+        }
+
+        function selectedCollegeNames() {
+            return selectedConvertColleges.map(function (collegeId) {
+                var match = (Array.isArray(convertColleges) ? convertColleges : []).find(function (college) {
+                    return college.id === collegeId;
+                });
+
+                return match ? match.name : collegeId;
+            });
+        }
+
+        function buildConvertedPreviewRows() {
+            var selectedCollegeLabel = selectedCollegeNames().join(', ');
+
+            return convertRows.filter(function (row) {
+                return selectedConvertRegions.indexOf(row.Region || '') !== -1;
+            }).map(function (row) {
+                var originalCourse = String(row.Course || '').trim();
+                var convertedCourse = String(courseConversions[originalCourse] || '').trim() || originalCourse;
+                var specialization = String(specializationOverrides[originalCourse] || '').trim() || String(row.Specialization || '').trim();
+
+                return {
+                    'Batch ID': String(row['Batch ID'] || ''),
+                    'Lead ID': String(row.__lead_id || row['Lead ID'] || ''),
+                    'Name': String(row.Name || ''),
+                    'Email': String(row.Email || ''),
+                    'Phone': String(row.Mobile || row.Phone || ''),
+                    'Region': String(row.Region || ''),
+                    'Original Course': originalCourse,
+                    'Converted Course': convertedCourse,
+                    'Specialization': specialization,
+                    'Selected Colleges': selectedCollegeLabel,
+                    'Lead Status': String(row.Status || '')
+                };
+            });
+        }
+
+        function filteredConvertedPreviewRows() {
+            var search = String(convertSearchInput && convertSearchInput.value || '').trim().toLowerCase();
+            var previewRows = buildConvertedPreviewRows();
+
+            if (!search) {
+                return previewRows;
+            }
+
+            return previewRows.filter(function (row) {
+                return convertPreviewHeaders.some(function (header) {
+                    return String(row[header] || '').toLowerCase().indexOf(search) !== -1;
+                });
+            });
+        }
+
+        function renderConvertPagination(totalPages) {
+            if (!convertPagination) {
+                return;
+            }
+
+            if (totalPages <= 1) {
+                convertPagination.innerHTML = '';
+                return;
+            }
+
+            var buttons = [];
+
+            function button(label, page, disabled, active) {
+                var classes = 'table-page-btn';
+                if (active) {
+                    classes += ' is-active';
+                }
+                if (disabled && !active) {
+                    classes += ' is-disabled';
+                }
+
+                if (active || disabled) {
+                    return '<span class="' + classes + '">' + escapeHtml(label) + '</span>';
+                }
+
+                return '<button type="button" class="' + classes + '" data-convert-page="' + escapeHtml(String(page)) + '">' + escapeHtml(label) + '</button>';
+            }
+
+            buttons.push(button('Prev', convertCurrentPage - 1, convertCurrentPage <= 1, false));
+            for (var page = 1; page <= totalPages; page += 1) {
+                buttons.push(button(String(page), page, false, page === convertCurrentPage));
+            }
+            buttons.push(button('Last', totalPages, convertCurrentPage >= totalPages, false));
+
+            convertPagination.innerHTML = '<div class="table-pagination"><div class="table-pagination__inner">' + buttons.join('') + '</div></div>';
+            convertPagination.querySelectorAll('[data-convert-page]').forEach(function (buttonNode) {
+                buttonNode.addEventListener('click', function () {
+                    convertCurrentPage = Number(buttonNode.getAttribute('data-convert-page') || '1');
+                    renderConvertedPreview();
+                });
+            });
+        }
+
+        function renderConvertedPreview() {
+            var previewRows = filteredConvertedPreviewRows();
+            var pageSize = Number(convertPageSizeSelect && convertPageSizeSelect.value || '20');
+            var totalRows = previewRows.length;
+            var totalPages = Math.max(1, Math.ceil(totalRows / Math.max(1, pageSize)));
+
+            if (convertCurrentPage > totalPages) {
+                convertCurrentPage = totalPages;
+            }
+
+            var startIndex = (convertCurrentPage - 1) * pageSize;
+            var visibleRows = previewRows.slice(startIndex, startIndex + pageSize);
+
+            if (convertPreviewHead) {
+                convertPreviewHead.innerHTML = '<tr>' + convertPreviewHeaders.map(function (header) {
+                    return '<th>' + escapeHtml(header) + '</th>';
+                }).join('') + '</tr>';
+            }
+
+            if (convertPreviewBody) {
+                convertPreviewBody.innerHTML = visibleRows.length ? visibleRows.map(function (row) {
+                    return '<tr>' + convertPreviewHeaders.map(function (header) {
+                        return '<td>' + escapeHtml(row[header] || '') + '</td>';
+                    }).join('') + '</tr>';
+                }).join('') : '<tr><td colspan="' + String(convertPreviewHeaders.length) + '" class="table-empty-state">No converted leads matched the current filters.</td></tr>';
+            }
+
+            if (convertPreviewCount) {
+                var fromRow = totalRows ? startIndex + 1 : 0;
+                var toRow = totalRows ? Math.min(startIndex + pageSize, totalRows) : 0;
+                convertPreviewCount.textContent = totalRows ? ('Showing ' + String(fromRow) + '-' + String(toRow) + ' of ' + String(totalRows) + ' leads') : '0 leads';
+            }
+
+            renderConvertPagination(totalPages);
+        }
+
+        function renderConvertRegionPicker() {
+            if (!convertRegionPicker) {
+                return;
+            }
+
+            convertRegionPicker.innerHTML = regionOrder.map(function (region) {
+                var summaryRow = (Array.isArray(convertSummary) ? convertSummary : []).find(function (entry) {
+                    return entry.region === region;
+                }) || { total: 0 };
+                var checked = selectedConvertRegions.indexOf(region) !== -1;
+
+                return '<label class="mapping-region-option"><input type="checkbox" value="' + escapeHtml(region) + '"' + (checked ? ' checked' : '') + '> <span>' + escapeHtml(region) + ' (' + String(summaryRow.total || 0) + ')</span></label>';
             }).join('');
 
-            regionPicker.querySelectorAll('input[type="checkbox"]').forEach(function (input) {
+            convertRegionPicker.querySelectorAll('input[type="checkbox"]').forEach(function (input) {
                 input.addEventListener('change', function () {
-                    selectedRegions = Array.from(regionPicker.querySelectorAll('input:checked')).map(function (node) {
+                    selectedConvertRegions = Array.from(convertRegionPicker.querySelectorAll('input:checked')).map(function (node) {
                         return node.value;
                     });
-                    if (!selectedRegions.length) {
-                        selectedRegions = regionOrder.slice();
-                        renderRegionPicker();
+                    if (!selectedConvertRegions.length) {
+                        selectedConvertRegions = regionOrder.slice();
+                        renderConvertRegionPicker();
                     }
-                    updateDependentFields();
+                    convertCurrentPage = 1;
+                    renderCourseConversionRows();
+                    renderSpecializationRows();
+                    renderConvertedPreview();
                 });
             });
         }
 
-        function renderSelectedRegionSections() {
-            if (!selectedRegionSections) {
+        function renderCourseConversionRows() {
+            if (!courseConversionBody) {
                 return;
             }
 
-            selectedRegionSections.innerHTML = selectedRegions.map(function (region) {
-                var previewRows = grouped[region].slice(0, 8);
-                return '<article class="mapping-selected-region-card"><div class="panel-head panel-head--table"><div><h3>' + escapeHtml(region) + ' Section</h3><p class="table-subtext">First 8 filtered rows for the selected region.</p></div><span class="panel-chip">' + escapeHtml(grouped[region].length) + ' leads</span></div>' + renderCompactTable(previewRows, headers, 'No leads in this region.') + '</article>';
-            }).join('');
-        }
+            var detectedCourses = detectedCoursesForSelectedRegions();
+            courseConversionBody.innerHTML = detectedCourses.length ? detectedCourses.map(function (course) {
+                return '<tr><td>' + escapeHtml(course) + '</td><td><input type="text" class="assignment-select mapping-inline-input" data-course-convert-input="' + escapeHtml(course) + '" value="' + escapeHtml(courseConversions[course] || '') + '" placeholder="Keep original course"></td></tr>';
+            }).join('') : '<tr><td colspan="2" class="table-empty-state">No detected courses found for the selected regions.</td></tr>';
 
-        function updateCourseOptions() {
-            if (!courseSelect) {
-                return;
-            }
-
-            var values = [];
-            selectedRows().forEach(function (row) {
-                if (row.Course && values.indexOf(row.Course) === -1) {
-                    values.push(row.Course);
-                }
-            });
-            values.sort();
-
-            if (!selectedCourses.length) {
-                selectedCourses = values.slice();
-            } else {
-                selectedCourses = selectedCourses.filter(function (value) {
-                    return values.indexOf(value) !== -1;
+            courseConversionBody.querySelectorAll('[data-course-convert-input]').forEach(function (input) {
+                input.addEventListener('input', function () {
+                    courseConversions[input.getAttribute('data-course-convert-input') || ''] = input.value || '';
+                    convertCurrentPage = 1;
+                    renderConvertedPreview();
                 });
-                if (!selectedCourses.length) {
-                    selectedCourses = values.slice();
-                }
-            }
-
-            courseSelect.innerHTML = values.map(function (value) {
-                return '<option value="' + escapeHtml(value) + '"' + (selectedCourses.indexOf(value) !== -1 ? ' selected' : '') + '>' + escapeHtml(value) + '</option>';
-            }).join('');
-            renderChipList(courseChipList, selectedCourses, 'All available course values are selected.');
-        }
-
-        function updateSpecializationOptions() {
-            if (!specializationSelect) {
-                return;
-            }
-
-            var values = [];
-            selectedCourseRows().forEach(function (row) {
-                if (row.Specialization && values.indexOf(row.Specialization) === -1) {
-                    values.push(row.Specialization);
-                }
             });
-            values.sort();
-
-            if (values.indexOf(selectedSpecialization) === -1) {
-                selectedSpecialization = values[0] || '';
-            }
-
-            specializationSelect.innerHTML = values.length
-                ? values.map(function (value) {
-                    return '<option value="' + escapeHtml(value) + '"' + (value === selectedSpecialization ? ' selected' : '') + '>' + escapeHtml(value) + '</option>';
-                }).join('')
-                : '<option value="">No specialization found</option>';
         }
 
-        function updateCollegeOptions() {
-            if (!collegeSelect) {
+        function renderSpecializationRows() {
+            if (!specializationConversionBody) {
                 return;
             }
 
-            collegeSelect.innerHTML = (Array.isArray(colleges) ? colleges : []).map(function (college) {
+            var detectedCourses = detectedCoursesForSelectedRegions();
+            specializationConversionBody.innerHTML = detectedCourses.length ? detectedCourses.map(function (course) {
+                return '<tr><td>' + escapeHtml(course) + '</td><td><input type="text" class="assignment-select mapping-inline-input" data-specialization-convert-input="' + escapeHtml(course) + '" value="' + escapeHtml(specializationOverrides[course] || '') + '" placeholder="Keep original specialization"></td></tr>';
+            }).join('') : '<tr><td colspan="2" class="table-empty-state">No specialization suggestions found for the selected regions.</td></tr>';
+
+            specializationConversionBody.querySelectorAll('[data-specialization-convert-input]').forEach(function (input) {
+                input.addEventListener('input', function () {
+                    specializationOverrides[input.getAttribute('data-specialization-convert-input') || ''] = input.value || '';
+                    convertCurrentPage = 1;
+                    renderConvertedPreview();
+                });
+            });
+        }
+
+        function renderConvertCollegeOptions() {
+            if (!convertCollegeSelect) {
+                return;
+            }
+
+            convertCollegeSelect.innerHTML = (Array.isArray(convertColleges) ? convertColleges : []).map(function (college) {
                 var value = college.id || '';
                 var label = college.name || value;
-                return '<option value="' + escapeHtml(value) + '"' + (selectedColleges.indexOf(value) !== -1 ? ' selected' : '') + '>' + escapeHtml(label) + '</option>';
+                var selected = selectedConvertColleges.indexOf(value) !== -1 ? ' selected' : '';
+
+                return '<option value="' + escapeHtml(value) + '"' + selected + '>' + escapeHtml(label) + '</option>';
             }).join('');
-            renderChipList(collegeChipList, selectedColleges.map(function (id) {
-                var match = colleges.find(function (college) {
-                    return college.id === id;
-                });
-                return match ? match.name : id;
-            }), 'No colleges selected yet.');
+
+            renderChipList(convertCollegeChipList, selectedCollegeNames(), 'No colleges selected yet.');
         }
 
-        function updateDependentFields() {
-            renderSelectedRegionSections();
-            updateCourseOptions();
-            updateSpecializationOptions();
-        }
+        renderConvertRegionPicker();
+        renderCourseConversionRows();
+        renderSpecializationRows();
+        renderConvertCollegeOptions();
+        renderConvertedPreview();
 
-        renderRegionPicker();
-        updateDependentFields();
-        updateCollegeOptions();
-
-        if (courseSelect) {
-            courseSelect.addEventListener('change', function () {
-                selectedCourses = selectValues(courseSelect);
-                if (!selectedCourses.length) {
-                    selectedCourses = Array.from(courseSelect.options).map(function (option) {
-                        return option.value;
-                    });
-                }
-                renderChipList(courseChipList, selectedCourses, 'All available course values are selected.');
-                updateSpecializationOptions();
+        if (convertCollegeSelect) {
+            convertCollegeSelect.addEventListener('change', function () {
+                selectedConvertColleges = selectValues(convertCollegeSelect);
+                convertCurrentPage = 1;
+                renderConvertCollegeOptions();
+                renderConvertedPreview();
             });
         }
 
-        if (specializationSelect) {
-            specializationSelect.addEventListener('change', function () {
-                selectedSpecialization = specializationSelect.value || '';
+        if (convertSearchInput) {
+            convertSearchInput.addEventListener('input', function () {
+                convertCurrentPage = 1;
+                renderConvertedPreview();
             });
         }
 
-        if (collegeSelect) {
-            collegeSelect.addEventListener('change', function () {
-                selectedColleges = selectValues(collegeSelect);
-                updateCollegeOptions();
+        if (convertPageSizeSelect) {
+            convertPageSizeSelect.addEventListener('change', function () {
+                convertCurrentPage = 1;
+                renderConvertedPreview();
             });
         }
 
-        if (generateButton) {
-            generateButton.addEventListener('click', function () {
-                if (!selectedSpecialization) {
-                    errorNode.textContent = 'Select one specialization before confirming the mapping.';
-                    errorNode.classList.remove('d-none');
+        if (confirmCoursesConvertButton) {
+            confirmCoursesConvertButton.addEventListener('click', function () {
+                if (!selectedConvertColleges.length) {
+                    setConvertMessage('Select one or more colleges before confirming the mapping.', true);
                     return;
                 }
 
-                if (!selectedColleges.length) {
-                    errorNode.textContent = 'Select one or more colleges before confirming the mapping.';
-                    errorNode.classList.remove('d-none');
-                    return;
-                }
+                confirmCoursesConvertButton.disabled = true;
+                setConvertMessage('Saving converted mapping and preparing the API Duration step...', false);
 
-                generateButton.disabled = true;
-                fetchJson(coursesMappingRoot.getAttribute('data-generate-preview-url'), {
+                fetchJson(coursesConvertRoot.getAttribute('data-confirm-url'), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        batch_id: coursesMappingRoot.getAttribute('data-batch-id') || '',
-                        regions: selectedRegions,
-                        column: 'Course',
-                        course_values: selectedCourses,
-                        specialization: selectedSpecialization,
-                        college_ids: selectedColleges
+                        batch_id: coursesConvertRoot.getAttribute('data-batch-id') || '',
+                        regions: selectedConvertRegions,
+                        course_conversions: courseConversions,
+                        specialization_overrides: specializationOverrides,
+                        college_ids: selectedConvertColleges
                     })
-                }).then(function () {
-                    window.location.href = coursesMappingRoot.getAttribute('data-preview-page-url');
+                }).then(function (payload) {
+                    window.location.href = payload.data && payload.data.redirect
+                        ? payload.data.redirect
+                        : (coursesConvertRoot.getAttribute('data-api-duration-url') || '/leads/mapping/region/courses-convert/api-duration');
                 }).catch(function (error) {
-                    errorNode.textContent = error.message || 'Unable to confirm the mapping.';
-                    errorNode.classList.remove('d-none');
-                }).finally(function () {
-                    generateButton.disabled = false;
+                    confirmCoursesConvertButton.disabled = false;
+                    setConvertMessage(error.message || 'Unable to confirm the Courses Convert mapping.', true);
+                });
+            });
+        }
+    }
+
+    var coursesConvertDurationRoot = document.querySelector('[data-courses-convert-duration-page]');
+    if (coursesConvertDurationRoot) {
+        var convertedApiRows = readJsonAttribute(coursesConvertDurationRoot, 'data-api-rows');
+        var convertStartTime = coursesConvertDurationRoot.querySelector('[data-convert-start-time]');
+        var convertEndTime = coursesConvertDurationRoot.querySelector('[data-convert-end-time]');
+        var convertBatchSize = coursesConvertDurationRoot.querySelector('[data-convert-batch-size]');
+        var convertDelay = coursesConvertDurationRoot.querySelector('[data-convert-delay]');
+        var convertDurationMessage = coursesConvertDurationRoot.querySelector('[data-convert-duration-message]');
+        var sendConvertedLeadsButton = coursesConvertDurationRoot.querySelector('[data-send-converted-leads]');
+
+        function setConvertDurationMessage(message, isError) {
+            if (!convertDurationMessage) {
+                return;
+            }
+
+            if (!message) {
+                convertDurationMessage.textContent = '';
+                convertDurationMessage.classList.add('d-none');
+                convertDurationMessage.classList.remove('mapping-preview-message--error', 'mapping-preview-message--success');
+                return;
+            }
+
+            convertDurationMessage.textContent = message;
+            convertDurationMessage.classList.remove('d-none');
+            convertDurationMessage.classList.toggle('mapping-preview-message--error', !!isError);
+            convertDurationMessage.classList.toggle('mapping-preview-message--success', !isError);
+        }
+
+        if (sendConvertedLeadsButton) {
+            sendConvertedLeadsButton.addEventListener('click', function () {
+                var startTime = String(convertStartTime && convertStartTime.value || '').trim();
+                var endTime = String(convertEndTime && convertEndTime.value || '').trim();
+                var batchSize = Number(convertBatchSize && convertBatchSize.value || '50');
+                var delaySeconds = Number(convertDelay && convertDelay.value || '0.35');
+
+                if (startTime && endTime && startTime > endTime) {
+                    setConvertDurationMessage('End Time must be later than or equal to Start Time.', true);
+                    return;
+                }
+
+                if (!batchSize || batchSize <= 0) {
+                    setConvertDurationMessage('Batch Size must be greater than zero.', true);
+                    return;
+                }
+
+                if (delaySeconds < 0) {
+                    setConvertDurationMessage('Delay Between Requests must be zero or greater.', true);
+                    return;
+                }
+
+                sendConvertedLeadsButton.disabled = true;
+                setConvertDurationMessage('Queueing converted leads for the colleges API...', false);
+                queueToastForNextPage(String(convertedApiRows.length || 0) + ' converted leads selected for API sending.');
+
+                fetchJson(coursesConvertDurationRoot.getAttribute('data-send-url'), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        start_time: startTime,
+                        end_time: endTime,
+                        batch_size: batchSize,
+                        delay_between_requests: delaySeconds,
+                        leads_data: Array.isArray(convertedApiRows) ? convertedApiRows : []
+                    })
+                }).then(function (payload) {
+                    setConvertDurationMessage(payload.data && payload.data.confirmation ? payload.data.confirmation : 'Converted leads queued successfully. Redirecting to Leads...', false);
+                    window.setTimeout(function () {
+                        window.location.href = payload.data && payload.data.redirect ? payload.data.redirect : '/leads';
+                    }, 250);
+                }).catch(function (error) {
+                    sendConvertedLeadsButton.disabled = false;
+                    setConvertDurationMessage(error.message || 'Unable to send converted leads to the colleges API.', true);
                 });
             });
         }
@@ -1411,46 +1870,6 @@ document.addEventListener('DOMContentLoaded', function () {
         };
 
         return apiDurationRoot._apiDurationFlow;
-    }
-
-    var previewRoot = document.querySelector('[data-mapping-courses-preview]');
-    if (previewRoot) {
-        var confirmButton = previewRoot.querySelector('[data-confirm-mapping]');
-        var durationMessage = previewRoot.querySelector('[data-duration-message]');
-
-        function setMessage(message, isError) {
-            if (!durationMessage) {
-                return;
-            }
-
-            durationMessage.textContent = message;
-            durationMessage.classList.remove('d-none');
-            durationMessage.classList.toggle('mapping-preview-message--error', !!isError);
-            durationMessage.classList.toggle('mapping-preview-message--success', !isError);
-        }
-
-        if (confirmButton) {
-            confirmButton.addEventListener('click', function () {
-                confirmButton.disabled = true;
-                fetchJson(previewRoot.getAttribute('data-confirm-url'), {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        mapping_configuration_id: previewRoot.getAttribute('data-mapping-configuration-id')
-                    })
-                }).then(function (payload) {
-                    setMessage('Mapping confirmed. Redirecting to Assign Region Colleagues.', false);
-                    setTimeout(function () {
-                        window.location.href = payload.data && payload.data.redirect ? payload.data.redirect : '/leads/mapping/region/api-colleagues';
-                    }, 300);
-                }).catch(function (error) {
-                    confirmButton.disabled = false;
-                    setMessage(error.message || 'Unable to confirm mapping.', true);
-                });
-            });
-        }
     }
 
     var regionColleaguesRoot = document.querySelector('[data-region-colleagues-page]');

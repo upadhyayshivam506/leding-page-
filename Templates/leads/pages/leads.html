@@ -3,7 +3,9 @@
     data-leads-page
     data-leads-api-url="{{leads_api_url}}"
     data-leads-export-url="{{leads_export_url}}"
+    data-send-selected-leads-url="{{send_to_college_url}}"
     data-lead-push-status-url="{{lead_push_status_url}}"
+    data-colleges="{{colleges_catalog_attr_json}}"
     data-initial-filters="{{lead_filters_json}}"
 >
     <div class="leads-header">
@@ -14,8 +16,10 @@
         <div class="leads-header__actions">
             {{upload_button_html}}
             {{export_button_html}}
+            <button type="button" class="panel-link topbar-action-link leads-action-button" data-open-send-college-modal disabled>Send to College</button>
         </div>
     </div>
+    <p class="leads-filter-message d-none" data-leads-send-message role="status" aria-live="polite"></p>
 </section>
 
 <section class="table-panel lead-upload-progress-panel d-none" data-lead-upload-progress-panel>
@@ -176,4 +180,34 @@
         </div>
     </div>
     <div data-leads-pagination>{{main_table_pagination_html}}</div>
+</section>
+
+<section class="mapping-modal d-none" data-leads-send-college-modal aria-hidden="true">
+    <div class="mapping-modal__backdrop" data-close-send-college-modal></div>
+    <div class="mapping-modal__dialog leads-send-college-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="leads-send-college-title">
+        <div class="mapping-modal__header">
+            <div>
+                <p class="hero-label">Send to College</p>
+                <h3 id="leads-send-college-title">Choose College API</h3>
+            </div>
+            <button type="button" class="mapping-modal__close" data-close-send-college-modal aria-label="Close">×</button>
+        </div>
+        <div class="mapping-modal__body leads-send-college-modal__body">
+            <p class="table-subtext" data-send-college-selection-summary>No leads selected.</p>
+            <label class="form-label">
+                Search College
+                <input type="search" class="assignment-select mapping-inline-input" data-college-search-input placeholder="Search colleges">
+            </label>
+            <label class="form-label">
+                College
+                <select class="assignment-select leads-send-college-select" size="8" data-college-single-select></select>
+            </label>
+            <p class="table-subtext leads-send-college-modal__hint">Choose one college to immediately send only the selected leads through its configured API.</p>
+            <p class="mapping-modal__message d-none" data-send-college-modal-message></p>
+        </div>
+        <div class="mapping-modal__footer">
+            <button type="button" class="panel-link topbar-action-link" data-close-send-college-modal>Cancel</button>
+            <button type="button" class="btn dashboard-logout" data-confirm-send-college>Confirm Send</button>
+        </div>
+    </div>
 </section>

@@ -1,0 +1,72 @@
+<section class="page-heading">
+    <p class="hero-label">{{page_kicker}}</p>
+    <h2>{{page_title}}</h2>
+</section>
+
+<section class="mapping-stepper" data-stepper data-current-step="{{mapping_step}}">
+    <div class="mapping-step" data-step-id="upload"><span>1</span><strong>Upload</strong></div>
+    <div class="mapping-step" data-step-id="region"><span>2</span><strong>Region</strong></div>
+    <div class="mapping-step" data-step-id="courses-convert"><span>3</span><strong>Courses Convert</strong></div>
+    <div class="mapping-step" data-step-id="api-duration"><span>4</span><strong>API Duration</strong></div>
+</section>
+
+<section class="mapping-convert-duration-page" data-courses-convert-duration-page data-send-url="{{courses_convert_send_url}}" data-leads-page-url="{{leads_page_url}}" data-job-status-url="{{lead_push_status_url}}" data-preview-rows="{{courses_convert_preview_rows_attr_json}}" data-api-rows="{{courses_convert_api_rows_attr_json}}" data-selected-colleges="{{selected_college_names_attr_json}}" data-selected-regions="{{courses_convert_regions_attr_json}}" data-converted-courses="{{courses_convert_courses_attr_json}}" data-specializations="{{courses_convert_specializations_attr_json}}" data-total-leads="{{api_duration_total_leads}}">
+    <section class="mapping-preview-summary">
+        <article class="info-panel">
+            <p class="hero-label">Mapped Lead Snapshot</p>
+            <h3>Converted Mapping Summary</h3>
+            <div class="mapping-summary-list">
+                <div><span>Total Leads</span><strong>{{preview_total_records}}</strong></div>
+                <div><span>Selected Regions</span><strong>{{preview_selected_regions}}</strong></div>
+                <div><span>Converted Courses</span><strong>{{preview_selected_courses}}</strong></div>
+                <div><span>Specializations</span><strong>{{preview_selected_specialization}}</strong></div>
+                <div><span>Selected Colleges</span><strong>{{preview_selected_colleges}}</strong></div>
+            </div>
+        </article>
+
+        <article class="info-panel">
+            <p class="hero-label">API Duration Settings</p>
+            <h3>Schedule and Request Controls</h3>
+            <div class="mapping-form-grid assignment-duration-grid mapping-convert-duration-grid">
+                <label class="form-label">
+                    Start Time
+                    <input type="time" class="assignment-select" data-convert-start-time>
+                </label>
+                <label class="form-label">
+                    End Time
+                    <input type="time" class="assignment-select" data-convert-end-time>
+                </label>
+                <label class="form-label">
+                    Batch Size
+                    <input type="number" min="1" step="1" class="assignment-select" data-convert-batch-size value="50">
+                </label>
+                <label class="form-label">
+                    Delay Between Requests
+                    <input type="number" min="0" step="0.1" class="assignment-select" data-convert-delay value="0.35">
+                </label>
+            </div>
+        </article>
+    </section>
+
+    <article class="table-panel mapping-convert-preview-panel">
+        <div class="panel-head panel-head--table">
+            <div>
+                <h3>Send Leads to Colleges API</h3>
+                <p class="table-subtext">Final preview of the converted leads that will be sent to the selected colleges.</p>
+            </div>
+            <span class="panel-chip">{{main_table_count_label}}</span>
+        </div>
+        <div class="table-responsive mapping-convert-preview-scroll">
+            <table class="table admin-table align-middle mb-0">
+                <thead>{{main_table_head_html}}</thead>
+                <tbody>{{main_table_body_html}}</tbody>
+            </table>
+        </div>
+        {{main_table_pagination_html}}
+    </article>
+
+    <div class="mapping-actions mapping-actions--footer">
+        <p class="mapping-preview-message d-none mapping-course-page__message" data-convert-duration-message></p>
+        <button type="button" class="btn dashboard-logout" data-send-converted-leads>Send Leads to API</button>
+    </div>
+</section>

@@ -26,6 +26,8 @@ final class LeadMappingService
                 region VARCHAR(50) NOT NULL,
                 api_url VARCHAR(255) DEFAULT NULL,
                 api_token VARCHAR(255) DEFAULT NULL,
+                recommended_source VARCHAR(120) DEFAULT NULL,
+                external_college_id VARCHAR(100) DEFAULT NULL,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 PRIMARY KEY (id),
@@ -33,6 +35,8 @@ final class LeadMappingService
                 KEY colleagues_college_name_index (college_name)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
         );
+
+        $this->ensureColleaguesColumns($connection);
 
         $connection->exec(
             'CREATE TABLE IF NOT EXISTS lead_mapping_configurations (
@@ -43,6 +47,8 @@ final class LeadMappingService
                 selected_courses JSON NOT NULL,
                 selected_specialization VARCHAR(190) DEFAULT NULL,
                 selected_colleges JSON NOT NULL,
+                course_conversion_json JSON DEFAULT NULL,
+                specialization_conversion_json JSON DEFAULT NULL,
                 total_leads INT NOT NULL DEFAULT 0,
                 status VARCHAR(50) NOT NULL DEFAULT "previewed",
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -61,6 +67,8 @@ final class LeadMappingService
                 job_token VARCHAR(120) NOT NULL,
                 batch_size INT NOT NULL,
                 delay_seconds DECIMAL(8,2) NOT NULL DEFAULT 0.20,
+                start_time TIME DEFAULT NULL,
+                end_time TIME DEFAULT NULL,
                 status VARCHAR(50) NOT NULL DEFAULT "queued",
                 total_leads INT NOT NULL DEFAULT 0,
                 total_requests INT NOT NULL DEFAULT 0,
@@ -69,6 +77,7 @@ final class LeadMappingService
                 success_count INT NOT NULL DEFAULT 0,
                 failed_count INT NOT NULL DEFAULT 0,
                 colleges_json JSON NOT NULL,
+                leads_json LONGTEXT DEFAULT NULL,
                 started_at DATETIME DEFAULT NULL,
                 completed_at DATETIME DEFAULT NULL,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -80,6 +89,7 @@ final class LeadMappingService
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
         );
 
+        $this->ensureLeadMappingConfigurationColumns($connection);
         $this->ensureLeadMappingJobsColumns($connection);
 
         $connection->exec(
@@ -91,11 +101,13 @@ final class LeadMappingService
                 lead_id VARCHAR(100) NOT NULL,
                 name VARCHAR(190) DEFAULT NULL,
                 email VARCHAR(190) DEFAULT NULL,
+                mobile VARCHAR(50) DEFAULT NULL,
                 phone VARCHAR(50) DEFAULT NULL,
                 course VARCHAR(190) DEFAULT NULL,
                 specialization VARCHAR(190) DEFAULT NULL,
                 campus VARCHAR(190) DEFAULT NULL,
                 college_name VARCHAR(190) NOT NULL,
+                api_url VARCHAR(255) DEFAULT NULL,
                 city VARCHAR(120) DEFAULT NULL,
                 state VARCHAR(120) DEFAULT NULL,
                 region VARCHAR(50) DEFAULT NULL,
@@ -117,6 +129,70 @@ final class LeadMappingService
         );
 
         $this->ensureLeadApiLogsColumns($connection);
+
+        $connection->exec(
+            'CREATE TABLE IF NOT EXISTS lead_push_logs (
+                id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+                mapping_configuration_id BIGINT(20) UNSIGNED DEFAULT NULL,
+                job_token VARCHAR(120) DEFAULT NULL,
+                batch_id VARCHAR(100) DEFAULT NULL,
+                lead_id VARCHAR(100) NOT NULL,
+                college_id VARCHAR(100) NOT NULL,
+                college_name VARCHAR(190) DEFAULT NULL,
+                api_url VARCHAR(255) DEFAULT NULL,
+                region VARCHAR(50) DEFAULT NULL,
+                course VARCHAR(190) DEFAULT NULL,
+                specialization VARCHAR(190) DEFAULT NULL,
+                total_records INT NOT NULL DEFAULT 1,
+                status VARCHAR(50) DEFAULT NULL,
+                api_status VARCHAR(50) NOT NULL DEFAULT "queued",
+                response_message LONGTEXT DEFAULT NULL,
+                response LONGTEXT DEFAULT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (id),
+                KEY lead_push_logs_batch_id_index (batch_id),
+                KEY lead_push_logs_lead_id_index (lead_id),
+                KEY lead_push_logs_region_index (region),
+                KEY lead_push_logs_college_id_index (college_id),
+                KEY lead_push_logs_status_index (status),
+                KEY lead_push_logs_job_token_index (job_token)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+        );
+
+        $connection->exec(
+            'CREATE TABLE IF NOT EXISTS leads_main_table (
+                id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+                mapping_configuration_id BIGINT(20) UNSIGNED DEFAULT NULL,
+                job_token VARCHAR(120) DEFAULT NULL,
+                batch_id VARCHAR(100) DEFAULT NULL,
+                source_lead_id VARCHAR(100) NOT NULL,
+                college_id VARCHAR(100) DEFAULT NULL,
+                college_name VARCHAR(190) DEFAULT NULL,
+                name VARCHAR(190) DEFAULT NULL,
+                email VARCHAR(190) DEFAULT NULL,
+                mobile VARCHAR(50) DEFAULT NULL,
+                phone VARCHAR(50) DEFAULT NULL,
+                course VARCHAR(190) DEFAULT NULL,
+                specialization VARCHAR(190) DEFAULT NULL,
+                state VARCHAR(120) DEFAULT NULL,
+                city VARCHAR(120) DEFAULT NULL,
+                region VARCHAR(50) DEFAULT NULL,
+                push_status VARCHAR(50) NOT NULL DEFAULT "pending",
+                response_message LONGTEXT DEFAULT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (id),
+                KEY leads_main_table_batch_id_index (batch_id),
+                KEY leads_main_table_source_lead_id_index (source_lead_id),
+                KEY leads_main_table_college_id_index (college_id),
+                KEY leads_main_table_push_status_index (push_status),
+                KEY leads_main_table_job_token_index (job_token)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+        );
+
+        $this->ensureLeadPushLogsColumns($connection);
+        $this->ensureLeadsMainTableColumns($connection);
         $this->seedDefaultColleagues($connection);
     }
 
@@ -136,7 +212,7 @@ final class LeadMappingService
 
         $catalog = array_fill_keys(self::REGION_ORDER, []);
         $statement = Database::connection()->query(
-            'SELECT id, college_name, region, api_url, api_token
+            'SELECT id, college_name, region, api_url, api_token, recommended_source, external_college_id
              FROM colleagues
              ORDER BY region ASC, college_name ASC'
         );
@@ -161,10 +237,29 @@ final class LeadMappingService
                 'region' => $region,
                 'api_endpoint' => (string) ($row['api_url'] ?? ''),
                 'api_token' => (string) ($row['api_token'] ?? ''),
+                'recommended_source' => (string) ($row['recommended_source'] ?? ''),
+                'external_college_id' => (string) ($row['external_college_id'] ?? ''),
             ];
         }
 
         return $catalog;
+    }
+
+    public function colleagueSelectionCatalogByRegion(): array
+    {
+        $safeCatalog = array_fill_keys(self::REGION_ORDER, []);
+
+        foreach ($this->colleagueCatalogByRegion() as $region => $colleges) {
+            $safeCatalog[$region] = array_map(static function (array $college) use ($region): array {
+                return [
+                    'id' => (string) ($college['id'] ?? ''),
+                    'name' => (string) ($college['name'] ?? $college['id'] ?? ''),
+                    'region' => (string) $region,
+                ];
+            }, (array) $colleges);
+        }
+
+        return $safeCatalog;
     }
 
     public function collegesCatalog(): array
@@ -184,6 +279,16 @@ final class LeadMappingService
         usort($catalog, static fn (array $left, array $right): int => strcmp($left['name'], $right['name']));
 
         return $catalog;
+    }
+
+    public function collegeById(string $collegeId): ?array
+    {
+        $collegeId = trim($collegeId);
+        if ($collegeId === '') {
+            return null;
+        }
+
+        return $this->findCollegeById($collegeId);
     }
 
     public function normalizeRegions(array $regions): array
@@ -295,15 +400,17 @@ final class LeadMappingService
         array $courses,
         string $specialization,
         array $collegeIds,
-        int $totalLeads
+        int $totalLeads,
+        array $courseConversions = [],
+        array $specializationConversions = []
     ): int {
         $this->ensureTables();
 
         $statement = Database::connection()->prepare(
             'INSERT INTO lead_mapping_configurations (
-                batch_id, selected_regions, mapping_column, selected_courses, selected_specialization, selected_colleges, total_leads, status
+                batch_id, selected_regions, mapping_column, selected_courses, selected_specialization, selected_colleges, course_conversion_json, specialization_conversion_json, total_leads, status
              ) VALUES (
-                :batch_id, :selected_regions, :mapping_column, :selected_courses, :selected_specialization, :selected_colleges, :total_leads, :status
+                :batch_id, :selected_regions, :mapping_column, :selected_courses, :selected_specialization, :selected_colleges, :course_conversion_json, :specialization_conversion_json, :total_leads, :status
              )'
         );
 
@@ -314,6 +421,8 @@ final class LeadMappingService
             'selected_courses' => $this->encodeJson($courses),
             'selected_specialization' => $specialization !== '' ? $specialization : null,
             'selected_colleges' => $this->encodeJson($collegeIds),
+            'course_conversion_json' => $courseConversions !== [] ? $this->encodeJsonValue($courseConversions) : null,
+            'specialization_conversion_json' => $specializationConversions !== [] ? $this->encodeJsonValue($specializationConversions) : null,
             'total_leads' => $totalLeads,
             'status' => 'previewed',
         ]);
@@ -336,7 +445,15 @@ final class LeadMappingService
         ]);
     }
 
-    public function createOrReuseJob(int $mappingConfigurationId, string $batchId, int $batchSize, float $delay, array $leads, array $assignmentsByRegion): array
+    public function createOrReuseJob(
+        int $mappingConfigurationId,
+        string $batchId,
+        int $batchSize,
+        float $delay,
+        array $leads,
+        array $assignmentsByRegion,
+        array $options = []
+    ): array
     {
         $this->ensureTables();
 
@@ -350,9 +467,9 @@ final class LeadMappingService
         $totalRequests = $this->calculateTotalRequests($leads, $assignmentsByRegion);
         $statement = Database::connection()->prepare(
             'INSERT INTO lead_mapping_jobs (
-                mapping_configuration_id, batch_id, job_token, batch_size, delay_seconds, status, total_leads, total_requests, colleges_json
+                mapping_configuration_id, batch_id, job_token, batch_size, delay_seconds, start_time, end_time, status, total_leads, total_requests, colleges_json, leads_json
              ) VALUES (
-                :mapping_configuration_id, :batch_id, :job_token, :batch_size, :delay_seconds, :status, :total_leads, :total_requests, :colleges_json
+                :mapping_configuration_id, :batch_id, :job_token, :batch_size, :delay_seconds, :start_time, :end_time, :status, :total_leads, :total_requests, :colleges_json, :leads_json
              )'
         );
         $statement->execute([
@@ -361,10 +478,13 @@ final class LeadMappingService
             'job_token' => $jobToken,
             'batch_size' => $batchSize,
             'delay_seconds' => number_format($delay, 2, '.', ''),
+            'start_time' => $this->normalizeTimeOrNull($options['start_time'] ?? null),
+            'end_time' => $this->normalizeTimeOrNull($options['end_time'] ?? null),
             'status' => 'queued',
             'total_leads' => count($leads),
             'total_requests' => $totalRequests,
             'colleges_json' => $this->encodeJsonValue($assignmentsByRegion),
+            'leads_json' => $this->encodeJsonValue($leads),
         ]);
 
         $job = $this->findJobByToken($jobToken);
@@ -441,12 +561,15 @@ final class LeadMappingService
             throw new RuntimeException('Unable to load the last mapping configuration for retry.');
         }
 
-        $regions = $this->decodeJsonArray($mappingConfiguration['selected_regions'] ?? '[]');
-        $courses = $this->decodeJsonArray($mappingConfiguration['selected_courses'] ?? '[]');
         $specialization = trim((string) ($mappingConfiguration['selected_specialization'] ?? ''));
         $assignmentsByRegion = $this->decodeJsonMap($latestJob['colleges_json'] ?? '{}');
-        $rows = $this->fetchBatchRows($batchId);
-        $leads = $this->filterPreviewRows($rows, $regions, $courses, $specialization);
+        $leads = $this->decodedLeadsFromJob($latestJob);
+        if ($leads === []) {
+            $regions = $this->decodeJsonArray($mappingConfiguration['selected_regions'] ?? '[]');
+            $courses = $this->decodeJsonArray($mappingConfiguration['selected_courses'] ?? '[]');
+            $rows = $this->fetchBatchRows($batchId);
+            $leads = $this->filterPreviewRows($rows, $regions, $courses, $specialization);
+        }
 
         if ($leads === []) {
             throw new RuntimeException('No mapped leads are available for retry.');
@@ -459,7 +582,11 @@ final class LeadMappingService
             max(1, (int) ($latestJob['batch_size'] ?? 50)),
             max(0.0, (float) ($latestJob['delay_seconds'] ?? 0.35)),
             $leads,
-            $assignmentsByRegion
+            $assignmentsByRegion,
+            [
+                'start_time' => $latestJob['start_time'] ?? null,
+                'end_time' => $latestJob['end_time'] ?? null,
+            ]
         );
 
         $this->spawnBackgroundJob((string) ($job['job_token'] ?? ''));
@@ -559,12 +686,15 @@ final class LeadMappingService
             throw new RuntimeException('Mapping configuration not found for background job.');
         }
 
-        $regions = $this->decodeJsonArray($mappingConfiguration['selected_regions'] ?? '[]');
-        $courses = $this->decodeJsonArray($mappingConfiguration['selected_courses'] ?? '[]');
         $assignmentsByRegion = $this->decodeJsonMap($job['colleges_json'] ?? '{}');
-        $specialization = trim((string) ($mappingConfiguration['selected_specialization'] ?? ''));
-        $rows = $this->fetchBatchRows((string) ($mappingConfiguration['batch_id'] ?? ''));
-        $leads = $this->filterPreviewRows($rows, $regions, $courses, $specialization);
+        $leads = $this->decodedLeadsFromJob($job);
+        if ($leads === []) {
+            $regions = $this->decodeJsonArray($mappingConfiguration['selected_regions'] ?? '[]');
+            $courses = $this->decodeJsonArray($mappingConfiguration['selected_courses'] ?? '[]');
+            $specialization = trim((string) ($mappingConfiguration['selected_specialization'] ?? ''));
+            $rows = $this->fetchBatchRows((string) ($mappingConfiguration['batch_id'] ?? ''));
+            $leads = $this->filterPreviewRows($rows, $regions, $courses, $specialization);
+        }
 
         $this->processJob($jobToken, $leads, $assignmentsByRegion, (int) ($mappingConfiguration['id'] ?? 0), (string) ($mappingConfiguration['batch_id'] ?? ''));
     }
@@ -600,12 +730,32 @@ final class LeadMappingService
 
                     $college = $this->findCollegeById($collegeId);
                     if ($college === null) {
-                        $this->storeLeadLog($mappingConfigurationId, $jobToken, $batchId, $lead, $collegeId, 'failed', 'College configuration not found.', $requestKey, 1);
+                        $this->storeLeadLog($mappingConfigurationId, $jobToken, $batchId, $lead, $collegeId, null, 'failed', 'College configuration not found.', $requestKey, 1);
+                        $mainLeadId = $this->storeLeadMainRecord($mappingConfigurationId, $jobToken, $batchId, $lead, [
+                            'id' => $collegeId,
+                            'name' => $collegeId,
+                        ]);
+                        $this->updateLeadMainRecordStatus($mainLeadId, 'failed', 'College configuration not found.');
+                        $this->storeLeadPushDeliveryLog($mappingConfigurationId, $jobToken, $batchId, $lead, [
+                            'id' => $collegeId,
+                            'name' => $collegeId,
+                        ], 'failed', 'College configuration not found.');
                         $this->incrementJobCounters($jobToken, false);
                         continue;
                     }
 
+                    $mainLeadId = $this->storeLeadMainRecord($mappingConfigurationId, $jobToken, $batchId, $lead, $college);
                     $result = $this->retryLeadSend($lead, $college, $requestKey, $mappingConfigurationId, $jobToken, $batchId);
+                    $this->updateLeadMainRecordStatus($mainLeadId, $result['success'] ? 'sent' : 'failed', (string) ($result['response'] ?? ''));
+                    $this->storeLeadPushDeliveryLog(
+                        $mappingConfigurationId,
+                        $jobToken,
+                        $batchId,
+                        $lead,
+                        $college,
+                        $result['success'] ? 'sent' : 'failed',
+                        (string) ($result['response'] ?? '')
+                    );
                     $this->incrementJobCounters($jobToken, $result['success']);
                 }
 
@@ -628,18 +778,65 @@ final class LeadMappingService
         string $batchId,
         array $lead,
         string $collegeName,
+        ?string $apiUrl,
         string $status,
         string $response,
         string $requestKey,
         int $attemptNo
     ): void {
         $this->ensureTables();
+        $payload = $this->collegeLeadPayload($lead);
 
         $statement = Database::connection()->prepare(
             'INSERT INTO lead_api_logs (
-                mapping_configuration_id, job_token, batch_id, lead_id, name, email, phone, course, specialization, campus, college_name, city, state, region, source_file, status, response, request_key, attempt_no, schema_json, created_at
+                mapping_configuration_id, job_token, batch_id, lead_id, name, email, mobile, phone, course, specialization, campus, college_name, api_url, city, state, region, source_file, status, response, request_key, attempt_no, schema_json, created_at
              ) VALUES (
-                :mapping_configuration_id, :job_token, :batch_id, :lead_id, :name, :email, :phone, :course, :specialization, :campus, :college_name, :city, :state, :region, :source_file, :status, :response, :request_key, :attempt_no, :schema_json, NOW()
+                :mapping_configuration_id, :job_token, :batch_id, :lead_id, :name, :email, :mobile, :phone, :course, :specialization, :campus, :college_name, :api_url, :city, :state, :region, :source_file, :status, :response, :request_key, :attempt_no, :schema_json, NOW()
+             )'
+        );
+        $mobile = $this->stringOrNull($lead['Mobile'] ?? $lead['Phone'] ?? null);
+        $statement->execute([
+            'mapping_configuration_id' => $mappingConfigurationId > 0 ? $mappingConfigurationId : null,
+            'job_token' => $jobToken !== '' ? $jobToken : null,
+            'batch_id' => $batchId !== '' ? $batchId : null,
+            'lead_id' => (string) ($lead['__lead_id'] ?? $lead['Lead ID'] ?? ''),
+            'name' => $this->stringOrNull($payload['name'] ?? null),
+            'email' => $this->stringOrNull($payload['email'] ?? null),
+            'mobile' => $this->stringOrNull($payload['mobile'] ?? null),
+            'phone' => $mobile,
+            'course' => $this->stringOrNull($payload['course'] ?? null),
+            'specialization' => null,
+            'campus' => null,
+            'college_name' => $collegeName,
+            'api_url' => $this->stringOrNull($apiUrl),
+            'city' => $this->stringOrNull($payload['city'] ?? null),
+            'state' => $this->stringOrNull($payload['state'] ?? null),
+            'region' => $this->stringOrNull($lead['Region'] ?? null),
+            'source_file' => $this->stringOrNull($lead['Source File'] ?? null),
+            'status' => $status,
+            'response' => $response,
+            'request_key' => $requestKey !== '' ? $requestKey : null,
+            'attempt_no' => max(1, $attemptNo),
+            'schema_json' => (string) json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        ]);
+    }
+
+    public function storeLeadPushDeliveryLog(
+        int $mappingConfigurationId,
+        string $jobToken,
+        string $batchId,
+        array $lead,
+        array $college,
+        string $status,
+        string $response
+    ): void {
+        $this->ensureTables();
+
+        $statement = Database::connection()->prepare(
+            'INSERT INTO lead_push_logs (
+                mapping_configuration_id, job_token, batch_id, lead_id, college_id, college_name, api_url, region, course, specialization, total_records, status, api_status, response_message, response, created_at
+             ) VALUES (
+                :mapping_configuration_id, :job_token, :batch_id, :lead_id, :college_id, :college_name, :api_url, :region, :course, :specialization, :total_records, :status, :api_status, :response_message, :response, NOW()
              )'
         );
         $statement->execute([
@@ -647,23 +844,177 @@ final class LeadMappingService
             'job_token' => $jobToken !== '' ? $jobToken : null,
             'batch_id' => $batchId !== '' ? $batchId : null,
             'lead_id' => (string) ($lead['__lead_id'] ?? $lead['Lead ID'] ?? ''),
-            'name' => $this->stringOrNull($lead['Name'] ?? null),
-            'email' => $this->stringOrNull($lead['Email'] ?? null),
-            'phone' => $this->stringOrNull($lead['Mobile'] ?? $lead['Phone'] ?? null),
+            'college_id' => (string) ($college['id'] ?? ''),
+            'college_name' => $this->stringOrNull($college['name'] ?? $college['id'] ?? null),
+            'api_url' => $this->stringOrNull($college['api_endpoint'] ?? null),
+            'region' => $this->stringOrNull($lead['Region'] ?? null),
             'course' => $this->stringOrNull($lead['Course'] ?? null),
             'specialization' => $this->stringOrNull($lead['Specialization'] ?? null),
-            'campus' => $this->stringOrNull($lead['Campus'] ?? null),
-            'college_name' => $collegeName,
-            'city' => $this->stringOrNull($lead['City'] ?? null),
-            'state' => $this->stringOrNull($lead['State'] ?? null),
-            'region' => $this->stringOrNull($lead['Region'] ?? null),
-            'source_file' => $this->stringOrNull($lead['Source File'] ?? null),
+            'total_records' => 1,
             'status' => $status,
+            'api_status' => $status,
+            'response_message' => $response,
             'response' => $response,
-            'request_key' => $requestKey !== '' ? $requestKey : null,
-            'attempt_no' => max(1, $attemptNo),
-            'schema_json' => (string) json_encode((new LeadSchemaService())->visibleRow($lead, (string) ($lead['Batch ID'] ?? $batchId)), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
         ]);
+    }
+
+    public function storeLeadMainRecord(
+        int $mappingConfigurationId,
+        string $jobToken,
+        string $batchId,
+        array $lead,
+        array $college
+    ): int {
+        $this->ensureTables();
+
+        $statement = Database::connection()->prepare(
+            'INSERT INTO leads_main_table (
+                mapping_configuration_id, job_token, batch_id, source_lead_id, college_id, college_name, name, email, mobile, phone, course, specialization, state, city, region, push_status, response_message, created_at
+             ) VALUES (
+                :mapping_configuration_id, :job_token, :batch_id, :source_lead_id, :college_id, :college_name, :name, :email, :mobile, :phone, :course, :specialization, :state, :city, :region, :push_status, :response_message, NOW()
+             )'
+        );
+        $mobile = $this->stringOrNull($lead['Mobile'] ?? $lead['Phone'] ?? null);
+        $statement->execute([
+            'mapping_configuration_id' => $mappingConfigurationId > 0 ? $mappingConfigurationId : null,
+            'job_token' => $jobToken !== '' ? $jobToken : null,
+            'batch_id' => $batchId !== '' ? $batchId : null,
+            'source_lead_id' => (string) ($lead['__lead_id'] ?? $lead['Lead ID'] ?? ''),
+            'college_id' => $this->stringOrNull($college['id'] ?? null),
+            'college_name' => $this->stringOrNull($college['name'] ?? $college['id'] ?? null),
+            'name' => $this->stringOrNull($lead['Name'] ?? null),
+            'email' => $this->stringOrNull($lead['Email'] ?? null),
+            'mobile' => $mobile,
+            'phone' => $mobile,
+            'course' => $this->stringOrNull($lead['Course'] ?? null),
+            'specialization' => $this->stringOrNull($lead['Specialization'] ?? null),
+            'state' => $this->stringOrNull($lead['State'] ?? null),
+            'city' => $this->stringOrNull($lead['City'] ?? null),
+            'region' => $this->stringOrNull($lead['Region'] ?? null),
+            'push_status' => 'pending',
+            'response_message' => null,
+        ]);
+
+        return (int) Database::connection()->lastInsertId();
+    }
+
+    public function updateLeadMainRecordStatus(int $leadMainId, string $status, string $response): void
+    {
+        if ($leadMainId <= 0) {
+            return;
+        }
+
+        $statement = Database::connection()->prepare(
+            'UPDATE leads_main_table
+             SET push_status = :push_status,
+                 response_message = :response_message
+             WHERE id = :id'
+        );
+        $statement->execute([
+            'push_status' => $status,
+            'response_message' => $response,
+            'id' => $leadMainId,
+        ]);
+    }
+
+    public function storeSelectedLeadPushSummaryLog(
+        array $leads,
+        array $college,
+        string $status,
+        string $response,
+        int $totalRecords
+    ): void {
+        $this->ensureTables();
+
+        $firstLead = is_array($leads[0] ?? null) ? $leads[0] : [];
+        $batchIds = array_values(array_unique(array_filter(array_map(
+            static fn ($lead): string => trim((string) (($lead['Batch ID'] ?? ''))),
+            $leads
+        ), static fn (string $batchId): bool => $batchId !== '')));
+        $batchId = count($batchIds) === 1 ? $batchIds[0] : null;
+
+        $statement = Database::connection()->prepare(
+            'INSERT INTO lead_push_logs (
+                mapping_configuration_id, job_token, batch_id, lead_id, college_id, college_name, api_url, region, course, specialization, total_records, status, api_status, response_message, response, created_at
+             ) VALUES (
+                NULL, NULL, :batch_id, :lead_id, :college_id, :college_name, :api_url, :region, :course, :specialization, :total_records, :status, :api_status, :response_message, :response, NOW()
+             )'
+        );
+        $statement->execute([
+            'batch_id' => $batchId,
+            'lead_id' => trim((string) ($firstLead['__lead_id'] ?? $firstLead['Lead ID'] ?? 'selected-leads')) ?: 'selected-leads',
+            'college_id' => (string) ($college['id'] ?? ''),
+            'college_name' => $this->stringOrNull($college['name'] ?? $college['id'] ?? null),
+            'api_url' => $this->stringOrNull($college['api_endpoint'] ?? null),
+            'region' => $this->stringOrNull($firstLead['Region'] ?? null),
+            'course' => $this->stringOrNull($firstLead['Course'] ?? null),
+            'specialization' => $this->stringOrNull($firstLead['Specialization'] ?? null),
+            'total_records' => max(1, $totalRecords),
+            'status' => $status,
+            'api_status' => $status,
+            'response_message' => $response,
+            'response' => $response,
+        ]);
+    }
+
+    public function sendSelectedLeadsToCollege(array $leadRows, string $collegeId): array
+    {
+        $this->ensureTables();
+
+        $college = $this->findCollegeById($collegeId);
+        if ($college === null) {
+            throw new RuntimeException('Selected college configuration was not found.');
+        }
+
+        $schema = new LeadSchemaService();
+        $leads = [];
+        foreach ($leadRows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $leads[] = $schema->mapStoredRow($row, (string) ($row['batch_id'] ?? ''));
+        }
+
+        if ($leads === []) {
+            throw new RuntimeException('No selected leads were found.');
+        }
+
+        $successCount = 0;
+        $failedCount = 0;
+        $responses = [];
+
+        foreach ($leads as $index => $lead) {
+            $batchId = trim((string) ($lead['Batch ID'] ?? ''));
+            $requestKey = 'selected_' . sha1($collegeId . '|' . (string) ($lead['__lead_id'] ?? $lead['Lead ID'] ?? '') . '|' . microtime(true) . '|' . $index);
+            $result = $this->retryLeadSend($lead, $college, $requestKey, 0, '', $batchId);
+
+            if (!empty($result['success'])) {
+                $successCount++;
+            } else {
+                $failedCount++;
+            }
+
+            $responses[] = (string) ($result['response'] ?? '');
+        }
+
+        $isSuccess = $failedCount === 0;
+        $summaryStatus = $isSuccess ? 'success' : 'failed';
+        $summaryResponse = $isSuccess
+            ? 'Selected leads successfully sent to the college API.'
+            : 'Failed to send selected leads. Please try again.';
+
+        $this->storeSelectedLeadPushSummaryLog($leads, $college, $summaryStatus, $summaryResponse, count($leads));
+
+        return [
+            'success' => $isSuccess,
+            'college_name' => (string) ($college['name'] ?? $college['id'] ?? ''),
+            'total' => count($leads),
+            'success_count' => $successCount,
+            'failed_count' => $failedCount,
+            'response_message' => $summaryResponse,
+            'responses' => $responses,
+        ];
     }
 
     private function retryLeadSend(array $lead, array $college, string $requestKey, int $mappingConfigurationId, string $jobToken, string $batchId): array
@@ -684,6 +1035,7 @@ final class LeadMappingService
                 $batchId,
                 $lead,
                 (string) ($college['name'] ?? $college['id'] ?? ''),
+                (string) ($college['api_endpoint'] ?? ''),
                 $lastResult['success'] ? 'success' : 'failed',
                 (string) ($lastResult['response'] ?? ''),
                 $requestKey,
@@ -739,196 +1091,52 @@ final class LeadMappingService
 
     private function buildLeadPushRequest(array $lead, string $collegeId, array $college): array
     {
-        $leadState = (string) ($lead['State'] ?? '');
-        $payload = [];
+        $payload = $this->collegeLeadPayload($lead);
         $url = (string) ($college['api_endpoint'] ?? '');
         $headers = ['Content-Type: application/json'];
 
         switch ($collegeId) {
             case 'IBI':
                 $url = 'https://api.nopaperforms.com/dataporting/578/career_mantra';
-                $payload = [
-                    'name' => (string) ($lead['Name'] ?? ''),
-                    'email' => (string) ($lead['Email'] ?? ''),
-                    'mobile' => (string) ($lead['Mobile'] ?? ''),
-                    'state' => $leadState,
-                    'city' => (string) ($lead['City'] ?? ''),
-                    'course' => (string) ($lead['Course'] ?? ''),
-                ];
                 break;
             case 'Sunstone':
                 $url = 'https://hub-console-api.sunstone.in/lead/leadPush';
-                $payload = [
-                    'name' => (string) ($lead['Name'] ?? ''),
-                    'email' => (string) ($lead['Email'] ?? ''),
-                    'mobile' => (string) ($lead['Mobile'] ?? ''),
-                    'program' => (string) ($lead['Course'] ?? ''),
-                    'utm_source' => 'Aff_4074Care',
-                    'state' => $leadState,
-                    'city' => (string) ($lead['City'] ?? ''),
-                    'campus' => (string) ($lead['Campus'] ?? ''),
-                ];
                 if (($college['api_token'] ?? '') !== '') {
                     $headers[] = 'Authorization: Bearer ' . $college['api_token'];
                 }
                 break;
             case 'IILM':
                 $url = 'https://api.nopaperforms.com/dataporting/377/career_mantra';
-                $payload = [
-                    'college_id' => '377',
-                    'name' => (string) ($lead['Name'] ?? ''),
-                    'email' => (string) ($lead['Email'] ?? ''),
-                    'mobile' => (string) ($lead['Mobile'] ?? ''),
-                    'course' => (string) ($lead['Course'] ?? ''),
-                    'source' => 'career_mantra',
-                    'state' => $leadState,
-                    'city' => (string) ($lead['City'] ?? ''),
-                    'campus' => (string) ($lead['Campus'] ?? ''),
-                    'secret_key' => (string) ($college['api_token'] ?? ''),
-                ];
                 break;
             case 'GNOIT':
                 $url = 'https://api.nopaperforms.com/dataporting/19/career_mantra';
-                $payload = [
-                    'college_id' => '19',
-                    'name' => (string) ($lead['Name'] ?? ''),
-                    'email' => (string) ($lead['Email'] ?? ''),
-                    'country_dial_code' => '+91',
-                    'mobile' => (string) ($lead['Mobile'] ?? ''),
-                    'source' => 'career_mantra',
-                    'state' => $leadState,
-                    'Campus' => (string) ($lead['Campus'] ?? ''),
-                    'city' => (string) ($lead['City'] ?? ''),
-                    'Course' => (string) ($lead['Course'] ?? ''),
-                    'secret_key' => (string) ($college['api_token'] ?? ''),
-                ];
                 break;
             case 'NITTE':
                 $url = 'https://api.in5.nopaperforms.com/dataporting/5609/career_mantra';
-                $payload = [
-                    'college_id' => '5609',
-                    'source' => 'career_mantra',
-                    'name' => (string) ($lead['Name'] ?? ''),
-                    'email' => (string) ($lead['Email'] ?? ''),
-                    'mobile' => (string) ($lead['Mobile'] ?? ''),
-                    'state' => $leadState,
-                    'city' => (string) ($lead['City'] ?? ''),
-                    'course' => (string) ($lead['Course'] ?? ''),
-                    'specialization' => (string) ($lead['Specialization'] ?? ''),
-                    'secret_key' => (string) ($college['api_token'] ?? ''),
-                ];
                 break;
             case 'KCM':
                 $url = 'https://api.nopaperforms.com/dataporting/434/career_mantra';
-                $payload = [
-                    'college_id' => '434',
-                    'name' => (string) ($lead['Name'] ?? ''),
-                    'email' => (string) ($lead['Email'] ?? ''),
-                    'mobile' => (string) ($lead['Mobile'] ?? ''),
-                    'source' => 'career_mantra',
-                    'state' => $leadState,
-                    'city' => (string) ($lead['City'] ?? ''),
-                    'course' => (string) ($lead['Course'] ?? ''),
-                    'secret_key' => (string) ($college['api_token'] ?? ''),
-                ];
                 break;
             case 'GIBS':
                 $url = 'https://api.nopaperforms.com/dataporting/374/career_mantra';
-                $payload = [
-                    'college_id' => '374',
-                    'name' => (string) ($lead['Name'] ?? ''),
-                    'email' => (string) ($lead['Email'] ?? ''),
-                    'country_dial_code' => '+91',
-                    'mobile' => (string) ($lead['Mobile'] ?? ''),
-                    'source' => 'career_mantra',
-                    'state' => $leadState,
-                    'city' => (string) ($lead['City'] ?? ''),
-                    'course' => (string) ($lead['Course'] ?? ''),
-                    'secret_key' => (string) ($college['api_token'] ?? ''),
-                ];
                 break;
             case 'Alliance':
                 $url = 'https://api.nopaperforms.com/dataporting/207/career_mantra';
-                $payload = [
-                    'college_id' => '207',
-                    'source' => 'career_mantra',
-                    'name' => (string) ($lead['Name'] ?? ''),
-                    'email' => (string) ($lead['Email'] ?? ''),
-                    'mobile' => (string) ($lead['Mobile'] ?? ''),
-                    'state' => $leadState,
-                    'city' => (string) ($lead['City'] ?? ''),
-                    'campus' => (string) ($lead['Campus'] ?? ''),
-                    'course' => (string) ($lead['Course'] ?? ''),
-                    'secret_key' => (string) ($college['api_token'] ?? ''),
-                ];
                 break;
             case 'KKMU':
                 $url = 'https://api.nopaperforms.com/dataporting/692/career_mantra';
-                $payload = [
-                    'college_id' => '692',
-                    'source' => 'career_mantra',
-                    'name' => (string) ($lead['Name'] ?? ''),
-                    'email' => (string) ($lead['Email'] ?? ''),
-                    'mobile' => (string) ($lead['Mobile'] ?? ''),
-                    'state' => $leadState,
-                    'city' => (string) ($lead['City'] ?? ''),
-                    'campus' => (string) ($lead['Campus'] ?? ''),
-                    'university_id' => 'UG',
-                    'course' => (string) ($lead['Course'] ?? ''),
-                    'specialization' => (string) ($lead['Specialization'] ?? ''),
-                    'secret_key' => (string) ($college['api_token'] ?? ''),
-                ];
                 break;
             case 'PPSU':
                 $url = 'https://api.in5.nopaperforms.com/dataporting/5562/career_mantra';
-                $payload = [
-                    'college_id' => '5562',
-                    'name' => (string) ($lead['Name'] ?? ''),
-                    'email' => (string) ($lead['Email'] ?? ''),
-                    'mobile' => (string) ($lead['Mobile'] ?? ''),
-                    'source' => 'career_mantra',
-                    'state' => $leadState,
-                    'city' => (string) ($lead['City'] ?? ''),
-                    'campus' => (string) ($lead['Campus'] ?? ''),
-                    'course' => (string) ($lead['Course'] ?? ''),
-                    'specialization' => (string) ($lead['Specialization'] ?? ''),
-                    'secret_key' => (string) ($college['api_token'] ?? ''),
-                ];
                 break;
             case 'PBS':
                 $url = 'https://thirdpartyapi.extraaedge.com/api/SaveRequest/';
-                $payload = [
-                    'AuthToken' => (string) ($college['api_token'] ?? ''),
-                    'Source' => 'pcet',
-                    'FirstName' => (string) ($lead['Name'] ?? ''),
-                    'Email' => (string) ($lead['Email'] ?? ''),
-                    'State' => $leadState,
-                    'City' => (string) ($lead['City'] ?? ''),
-                    'MobileNumber' => (string) ($lead['Mobile'] ?? ''),
-                    'leadName' => 'Consultants',
-                    'LeadSource' => 'Mh. Alam_Career Mantra',
-                    'LeadCampaign' => 'Email',
-                    'LeadChannel' => 'Consultants',
-                    'Course' => (string) ($lead['Course'] ?? ''),
-                    'Center' => 'PBS',
-                    'Location' => (string) ($lead['Campus'] ?? 'PGDM'),
-                    'Entity4' => (string) ($lead['Specialization'] ?? ''),
-                ];
+                break;
+            case 'PCU':
+                $url = $url !== '' ? $url : 'https://api.in8.nopaperforms.com/dataporting/5674/career_mantra';
                 break;
             case 'Lexicon':
                 $url = 'https://api.nopaperforms.com/dataporting/375/career_mantra';
-                $payload = [
-                    'college_id' => '375',
-                    'source' => 'career_mantra',
-                    'name' => (string) ($lead['Name'] ?? ''),
-                    'email' => (string) ($lead['Email'] ?? ''),
-                    'mobile' => (string) ($lead['Mobile'] ?? ''),
-                    'state' => $leadState,
-                    'city' => (string) ($lead['City'] ?? ''),
-                    'campus' => (string) ($lead['Campus'] ?? ''),
-                    'course' => (string) ($lead['Course'] ?? ''),
-                    'secret_key' => (string) ($college['api_token'] ?? ''),
-                ];
                 break;
             default:
                 if ($url === '') {
@@ -937,19 +1145,6 @@ final class LeadMappingService
                         'response' => 'Missing API endpoint for college ' . $collegeId,
                     ];
                 }
-
-                $payload = [
-                    'lead_id' => (string) ($lead['__lead_id'] ?? $lead['Lead ID'] ?? ''),
-                    'name' => (string) ($lead['Name'] ?? ''),
-                    'email' => (string) ($lead['Email'] ?? ''),
-                    'mobile' => (string) ($lead['Mobile'] ?? ''),
-                    'state' => $leadState,
-                    'city' => (string) ($lead['City'] ?? ''),
-                    'course' => (string) ($lead['Course'] ?? ''),
-                    'specialization' => (string) ($lead['Specialization'] ?? ''),
-                    'campus' => (string) ($lead['Campus'] ?? ''),
-                    'college_name' => (string) ($lead['College'] ?? ''),
-                ];
                 break;
         }
 
@@ -961,6 +1156,18 @@ final class LeadMappingService
             'url' => $url,
             'payload' => $jsonPayload,
             'headers' => $headers,
+        ];
+    }
+
+    private function collegeLeadPayload(array $lead): array
+    {
+        return [
+            'name' => trim((string) ($lead['Name'] ?? '')),
+            'email' => trim((string) ($lead['Email'] ?? '')),
+            'mobile' => trim((string) ($lead['Mobile'] ?? $lead['Phone'] ?? '')),
+            'state' => trim((string) ($lead['State'] ?? '')),
+            'city' => trim((string) ($lead['City'] ?? '')),
+            'course' => trim((string) ($lead['Course'] ?? '')),
         ];
     }
 
@@ -1037,27 +1244,162 @@ final class LeadMappingService
 
     private function ensureLeadMappingJobsColumns(PDO $connection): void
     {
-        $statement = $connection->prepare(
-            'SELECT COUNT(*)
-             FROM information_schema.COLUMNS
-             WHERE TABLE_SCHEMA = DATABASE()
-               AND TABLE_NAME = :table_name
-               AND COLUMN_NAME = :column_name'
-        );
-        $statement->execute([
-            'table_name' => 'lead_mapping_jobs',
-            'column_name' => 'processed_leads',
-        ]);
-
-        if ((int) $statement->fetchColumn() === 0) {
+        if (!$this->columnExists($connection, 'lead_mapping_jobs', 'processed_leads')) {
             $connection->exec(
                 'ALTER TABLE lead_mapping_jobs
                  ADD COLUMN processed_leads INT NOT NULL DEFAULT 0 AFTER total_requests'
             );
         }
+
+        if (!$this->columnExists($connection, 'lead_mapping_jobs', 'start_time')) {
+            $connection->exec(
+                'ALTER TABLE lead_mapping_jobs
+                 ADD COLUMN start_time TIME DEFAULT NULL AFTER delay_seconds'
+            );
+        }
+
+        if (!$this->columnExists($connection, 'lead_mapping_jobs', 'end_time')) {
+            $connection->exec(
+                'ALTER TABLE lead_mapping_jobs
+                 ADD COLUMN end_time TIME DEFAULT NULL AFTER start_time'
+            );
+        }
+
+        if (!$this->columnExists($connection, 'lead_mapping_jobs', 'leads_json')) {
+            $connection->exec(
+                'ALTER TABLE lead_mapping_jobs
+                 ADD COLUMN leads_json LONGTEXT DEFAULT NULL AFTER colleges_json'
+            );
+        }
+    }
+
+    private function ensureLeadMappingConfigurationColumns(PDO $connection): void
+    {
+        if (!$this->columnExists($connection, 'lead_mapping_configurations', 'course_conversion_json')) {
+            $connection->exec(
+                'ALTER TABLE lead_mapping_configurations
+                 ADD COLUMN course_conversion_json JSON DEFAULT NULL AFTER selected_colleges'
+            );
+        }
+
+        if (!$this->columnExists($connection, 'lead_mapping_configurations', 'specialization_conversion_json')) {
+            $connection->exec(
+                'ALTER TABLE lead_mapping_configurations
+                 ADD COLUMN specialization_conversion_json JSON DEFAULT NULL AFTER course_conversion_json'
+            );
+        }
     }
 
     private function ensureLeadApiLogsColumns(PDO $connection): void
+    {
+        if (!$this->columnExists($connection, 'lead_api_logs', 'mobile')) {
+            $connection->exec(
+                'ALTER TABLE lead_api_logs
+                 ADD COLUMN mobile VARCHAR(50) DEFAULT NULL AFTER email'
+            );
+
+            $connection->exec(
+                'UPDATE lead_api_logs
+                 SET mobile = phone
+                 WHERE (mobile IS NULL OR TRIM(mobile) = "")
+                   AND phone IS NOT NULL
+                   AND TRIM(phone) <> ""'
+            );
+        }
+
+        if (!$this->columnExists($connection, 'lead_api_logs', 'schema_json')) {
+            $connection->exec(
+                'ALTER TABLE lead_api_logs
+                 ADD COLUMN schema_json JSON DEFAULT NULL AFTER attempt_no'
+            );
+        }
+
+        if (!$this->columnExists($connection, 'lead_api_logs', 'api_url')) {
+            $connection->exec(
+                'ALTER TABLE lead_api_logs
+                 ADD COLUMN api_url VARCHAR(255) DEFAULT NULL AFTER college_name'
+            );
+        }
+    }
+
+    private function ensureLeadPushLogsColumns(PDO $connection): void
+    {
+        $definitions = [
+            'mapping_configuration_id' => 'ALTER TABLE lead_push_logs ADD COLUMN mapping_configuration_id BIGINT(20) UNSIGNED DEFAULT NULL AFTER id',
+            'job_token' => 'ALTER TABLE lead_push_logs ADD COLUMN job_token VARCHAR(120) DEFAULT NULL AFTER mapping_configuration_id',
+            'batch_id' => 'ALTER TABLE lead_push_logs ADD COLUMN batch_id VARCHAR(100) DEFAULT NULL AFTER job_token',
+            'college_name' => 'ALTER TABLE lead_push_logs ADD COLUMN college_name VARCHAR(190) DEFAULT NULL AFTER college_id',
+            'api_url' => 'ALTER TABLE lead_push_logs ADD COLUMN api_url VARCHAR(255) DEFAULT NULL AFTER college_name',
+            'course' => 'ALTER TABLE lead_push_logs ADD COLUMN course VARCHAR(190) DEFAULT NULL AFTER region',
+            'specialization' => 'ALTER TABLE lead_push_logs ADD COLUMN specialization VARCHAR(190) DEFAULT NULL AFTER course',
+            'total_records' => 'ALTER TABLE lead_push_logs ADD COLUMN total_records INT NOT NULL DEFAULT 1 AFTER specialization',
+            'status' => 'ALTER TABLE lead_push_logs ADD COLUMN status VARCHAR(50) DEFAULT NULL AFTER total_records',
+            'response_message' => 'ALTER TABLE lead_push_logs ADD COLUMN response_message LONGTEXT DEFAULT NULL AFTER api_status',
+            'updated_at' => 'ALTER TABLE lead_push_logs ADD COLUMN updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at',
+        ];
+
+        foreach ($definitions as $column => $sql) {
+            if ($this->columnExists($connection, 'lead_push_logs', $column)) {
+                continue;
+            }
+
+            $connection->exec($sql);
+        }
+    }
+
+    private function ensureColleaguesColumns(PDO $connection): void
+    {
+        $definitions = [
+            'recommended_source' => 'ALTER TABLE colleagues ADD COLUMN recommended_source VARCHAR(120) DEFAULT NULL AFTER api_token',
+            'external_college_id' => 'ALTER TABLE colleagues ADD COLUMN external_college_id VARCHAR(100) DEFAULT NULL AFTER recommended_source',
+        ];
+
+        foreach ($definitions as $column => $sql) {
+            if ($this->columnExists($connection, 'colleagues', $column)) {
+                continue;
+            }
+
+            $connection->exec($sql);
+        }
+    }
+
+    private function ensureLeadsMainTableColumns(PDO $connection): void
+    {
+        $definitions = [
+            'mapping_configuration_id' => 'ALTER TABLE leads_main_table ADD COLUMN mapping_configuration_id BIGINT(20) UNSIGNED DEFAULT NULL AFTER id',
+            'job_token' => 'ALTER TABLE leads_main_table ADD COLUMN job_token VARCHAR(120) DEFAULT NULL AFTER mapping_configuration_id',
+            'batch_id' => 'ALTER TABLE leads_main_table ADD COLUMN batch_id VARCHAR(100) DEFAULT NULL AFTER job_token',
+            'source_lead_id' => 'ALTER TABLE leads_main_table ADD COLUMN source_lead_id VARCHAR(100) NOT NULL AFTER batch_id',
+            'college_id' => 'ALTER TABLE leads_main_table ADD COLUMN college_id VARCHAR(100) DEFAULT NULL AFTER source_lead_id',
+            'college_name' => 'ALTER TABLE leads_main_table ADD COLUMN college_name VARCHAR(190) DEFAULT NULL AFTER college_id',
+            'mobile' => 'ALTER TABLE leads_main_table ADD COLUMN mobile VARCHAR(50) DEFAULT NULL AFTER email',
+            'push_status' => 'ALTER TABLE leads_main_table ADD COLUMN push_status VARCHAR(50) NOT NULL DEFAULT "pending" AFTER region',
+            'state' => 'ALTER TABLE leads_main_table ADD COLUMN state VARCHAR(120) DEFAULT NULL AFTER specialization',
+            'city' => 'ALTER TABLE leads_main_table ADD COLUMN city VARCHAR(120) DEFAULT NULL AFTER state',
+            'response_message' => 'ALTER TABLE leads_main_table ADD COLUMN response_message LONGTEXT DEFAULT NULL AFTER push_status',
+        ];
+
+        foreach ($definitions as $column => $sql) {
+            if ($this->columnExists($connection, 'leads_main_table', $column)) {
+                continue;
+            }
+
+            $connection->exec($sql);
+        }
+
+        if ($this->columnExists($connection, 'leads_main_table', 'mobile')
+            && $this->columnExists($connection, 'leads_main_table', 'phone')) {
+            $connection->exec(
+                'UPDATE leads_main_table
+                 SET mobile = phone
+                 WHERE (mobile IS NULL OR TRIM(mobile) = "")
+                   AND phone IS NOT NULL
+                   AND TRIM(phone) <> ""'
+            );
+        }
+    }
+
+    private function columnExists(PDO $connection, string $tableName, string $columnName): bool
     {
         $statement = $connection->prepare(
             'SELECT COUNT(*)
@@ -1067,16 +1409,11 @@ final class LeadMappingService
                AND COLUMN_NAME = :column_name'
         );
         $statement->execute([
-            'table_name' => 'lead_api_logs',
-            'column_name' => 'schema_json',
+            'table_name' => $tableName,
+            'column_name' => $columnName,
         ]);
 
-        if ((int) $statement->fetchColumn() === 0) {
-            $connection->exec(
-                'ALTER TABLE lead_api_logs
-                 ADD COLUMN schema_json JSON DEFAULT NULL AFTER attempt_no'
-            );
-        }
+        return (int) $statement->fetchColumn() > 0;
     }
 
     private function hasSuccessfulLog(string $requestKey): bool
@@ -1112,17 +1449,19 @@ final class LeadMappingService
 
     private function seedDefaultColleagues(PDO $connection): void
     {
-        $count = (int) $connection->query('SELECT COUNT(*) FROM colleagues')->fetchColumn();
-        if ($count > 0) {
-            return;
-        }
-
         $statement = $connection->prepare(
             'INSERT INTO colleagues (
-                id, college_name, region, api_url, api_token
+                id, college_name, region, api_url, api_token, recommended_source, external_college_id
              ) VALUES (
-                :id, :college_name, :region, :api_url, :api_token
-             )'
+                :id, :college_name, :region, :api_url, :api_token, :recommended_source, :external_college_id
+             )
+             ON DUPLICATE KEY UPDATE
+                college_name = VALUES(college_name),
+                region = VALUES(region),
+                api_url = VALUES(api_url),
+                api_token = VALUES(api_token),
+                recommended_source = VALUES(recommended_source),
+                external_college_id = VALUES(external_college_id)'
         );
 
         foreach (colleague_catalog() as $region => $colleges) {
@@ -1133,6 +1472,8 @@ final class LeadMappingService
                     'region' => (string) $region,
                     'api_url' => (string) ($college['api_endpoint'] ?? ''),
                     'api_token' => (string) ($college['api_token'] ?? ''),
+                    'recommended_source' => $this->stringOrNull($college['recommended_source'] ?? null),
+                    'external_college_id' => $this->stringOrNull($college['external_college_id'] ?? null),
                 ]);
             }
         }
@@ -1181,9 +1522,9 @@ final class LeadMappingService
     {
         $statement = Database::connection()->prepare(
             'INSERT INTO lead_mapping_configurations (
-                batch_id, selected_regions, mapping_column, selected_courses, selected_specialization, selected_colleges, total_leads, status
+                batch_id, selected_regions, mapping_column, selected_courses, selected_specialization, selected_colleges, course_conversion_json, specialization_conversion_json, total_leads, status
              ) VALUES (
-                :batch_id, :selected_regions, :mapping_column, :selected_courses, :selected_specialization, :selected_colleges, :total_leads, :status
+                :batch_id, :selected_regions, :mapping_column, :selected_courses, :selected_specialization, :selected_colleges, :course_conversion_json, :specialization_conversion_json, :total_leads, :status
              )'
         );
         $statement->execute([
@@ -1193,6 +1534,8 @@ final class LeadMappingService
             'selected_courses' => (string) ($mappingConfiguration['selected_courses'] ?? '[]'),
             'selected_specialization' => $this->stringOrNull($mappingConfiguration['selected_specialization'] ?? null),
             'selected_colleges' => (string) ($mappingConfiguration['selected_colleges'] ?? '[]'),
+            'course_conversion_json' => $this->stringOrNull($mappingConfiguration['course_conversion_json'] ?? null),
+            'specialization_conversion_json' => $this->stringOrNull($mappingConfiguration['specialization_conversion_json'] ?? null),
             'total_leads' => max(0, $totalLeads),
             'status' => 'confirmed',
         ]);
@@ -1282,6 +1625,21 @@ final class LeadMappingService
         return 'Uploaded';
     }
 
+    private function decodedLeadsFromJob(array $job): array
+    {
+        $encoded = $job['leads_json'] ?? null;
+        if (!is_string($encoded) || trim($encoded) === '') {
+            return [];
+        }
+
+        $decoded = json_decode($encoded, true);
+        if (!is_array($decoded)) {
+            return [];
+        }
+
+        return (new LeadSchemaService())->normalizePayloadRows($decoded, (string) ($job['batch_id'] ?? ''));
+    }
+
     private function decodeJsonArray(mixed $value): array
     {
         if (is_array($value)) {
@@ -1329,6 +1687,24 @@ final class LeadMappingService
         $value = trim((string) ($value ?? ''));
 
         return $value === '' ? null : $value;
+    }
+
+    private function normalizeTimeOrNull(mixed $value): ?string
+    {
+        $time = trim((string) ($value ?? ''));
+        if ($time === '') {
+            return null;
+        }
+
+        if (preg_match('/^\d{2}:\d{2}$/', $time) === 1) {
+            return $time . ':00';
+        }
+
+        if (preg_match('/^\d{2}:\d{2}:\d{2}$/', $time) === 1) {
+            return $time;
+        }
+
+        return null;
     }
 
     private function encodeJson(array $value): string

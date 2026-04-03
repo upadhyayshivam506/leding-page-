@@ -31,8 +31,9 @@ function all_colleagues(): array
 {
     $all = [];
 
-    foreach (colleague_catalog() as $regionColleagues) {
+    foreach (colleague_catalog() as $region => $regionColleagues) {
         foreach ($regionColleagues as $id => $colleague) {
+            $colleague['region'] = (string) $region;
             $all[$id] = $colleague;
         }
     }
@@ -59,6 +60,17 @@ function all_colleagues(): array
     }
 
     return $ordered;
+}
+
+function public_colleagues(): array
+{
+    return array_map(static function (array $colleague): array {
+        return [
+            'id' => (string) ($colleague['id'] ?? ''),
+            'name' => (string) ($colleague['name'] ?? $colleague['id'] ?? ''),
+            'region' => (string) ($colleague['region'] ?? 'West / Others'),
+        ];
+    }, all_colleagues());
 }
 
 function find_colleague(string $collegeId): ?array
@@ -118,7 +130,7 @@ function getAllColleaguesByRegion(string $region): array
 function fetch_leads_by_region(string $batchId, string $region): array
 {
     $statement = db()->prepare(
-        'SELECT lead_id, name, email, phone, course, specialization, campus, college_name, city, state, region
+        'SELECT lead_id, name, email, mobile, phone, course, specialization, campus, college_name, city, state, region
          FROM leads
          WHERE batch_id = :batch_id AND region = :region
          ORDER BY id ASC'
@@ -136,7 +148,7 @@ function fetch_leads_by_region(string $batchId, string $region): array
 function fetch_all_leads(): array
 {
     $statement = db()->query(
-        'SELECT lead_id, name, email, phone, course, specialization, campus, college_name, city, state, region
+        'SELECT lead_id, name, email, mobile, phone, course, specialization, campus, college_name, city, state, region
          FROM leads
          ORDER BY created_at DESC, id DESC'
     );
@@ -144,39 +156,38 @@ function fetch_all_leads(): array
 
     return is_array($rows) ? $rows : [];
 }
+
+function lead_mobile_value(array $lead): string
+{
+    return (string) ($lead['mobile'] ?? $lead['phone'] ?? '');
+}
+
+function college_lead_payload(array $lead): array
+{
+    return [
+        'name' => trim((string) ($lead['name'] ?? '')),
+        'email' => trim((string) ($lead['email'] ?? '')),
+        'mobile' => trim(lead_mobile_value($lead)),
+        'state' => trim((string) ($lead['state'] ?? '')),
+        'city' => trim((string) ($lead['city'] ?? '')),
+        'course' => trim((string) ($lead['course'] ?? '')),
+    ];
+}
+
 function buildLeadPushRequest(array $lead, string $college_id, ?array $colleague = null): array
 {
     $collegeId = trim($college_id);
-    $leadState = (string) ($lead['state'] ?? '');
-    $payload = [];
+    $payload = college_lead_payload($lead);
     $url = $colleague['api_endpoint'] ?? '';
     $headers = ['Content-Type: application/json'];
 
     switch ($collegeId) {
         case 'IBI':
             $url = 'https://api.nopaperforms.com/dataporting/578/career_mantra';
-            $payload = [
-                'name' => (string) ($lead['name'] ?? ''),
-                'email' => (string) ($lead['email'] ?? ''),
-                'mobile' => (string) ($lead['phone'] ?? ''),
-                'state' => $leadState,
-                'city' => (string) ($lead['city'] ?? ''),
-                'course' => (string) ($lead['course'] ?? ''),
-            ];
             break;
 
         case 'Sunstone':
             $url = 'https://hub-console-api.sunstone.in/lead/leadPush';
-            $payload = [
-                'name' => (string) ($lead['name'] ?? ''),
-                'email' => (string) ($lead['email'] ?? ''),
-                'mobile' => (string) ($lead['phone'] ?? ''),
-                'program' => (string) ($lead['course'] ?? ''),
-                'utm_source' => 'Aff_4074Care',
-                'state' => $leadState,
-                'city' => (string) ($lead['city'] ?? ''),
-                'campus' => (string) ($lead['campus'] ?? ''),
-            ];
             if (($colleague['api_token'] ?? '') !== '') {
                 $headers[] = 'Authorization: Bearer ' . $colleague['api_token'];
             }
@@ -184,170 +195,46 @@ function buildLeadPushRequest(array $lead, string $college_id, ?array $colleague
 
         case 'IILM':
             $url = 'https://api.nopaperforms.com/dataporting/377/career_mantra';
-            $payload = [
-                'college_id' => '377',
-                'name' => (string) ($lead['name'] ?? ''),
-                'email' => (string) ($lead['email'] ?? ''),
-                'mobile' => (string) ($lead['phone'] ?? ''),
-                'course' => (string) ($lead['course'] ?? ''),
-                'source' => 'career_mantra',
-                'state' => $leadState,
-                'city' => (string) ($lead['city'] ?? ''),
-                'campus' => (string) ($lead['campus'] ?? ''),
-                'secret_key' => (string) ($colleague['api_token'] ?? ''),
-            ];
             break;
 
         case 'GNOIT':
             $url = 'https://api.nopaperforms.com/dataporting/19/career_mantra';
-            $payload = [
-                'college_id' => '19',
-                'name' => (string) ($lead['name'] ?? ''),
-                'email' => (string) ($lead['email'] ?? ''),
-                'country_dial_code' => '+91',
-                'mobile' => (string) ($lead['phone'] ?? ''),
-                'source' => 'career_mantra',
-                'state' => $leadState,
-                'Campus' => (string) ($lead['campus'] ?? ''),
-                'city' => (string) ($lead['city'] ?? ''),
-                'Course' => (string) ($lead['course'] ?? ''),
-                'secret_key' => (string) ($colleague['api_token'] ?? ''),
-            ];
             break;
 
         case 'NITTE':
             $url = 'https://api.in5.nopaperforms.com/dataporting/5609/career_mantra';
-            $payload = [
-                'college_id' => '5609',
-                'source' => 'career_mantra',
-                'name' => (string) ($lead['name'] ?? ''),
-                'email' => (string) ($lead['email'] ?? ''),
-                'mobile' => (string) ($lead['phone'] ?? ''),
-                'state' => $leadState,
-                'city' => (string) ($lead['city'] ?? ''),
-                'course' => (string) ($lead['course'] ?? ''),
-                'specialization' => (string) ($lead['specialization'] ?? ''),
-                'secret_key' => (string) ($colleague['api_token'] ?? ''),
-            ];
             break;
 
         case 'KCM':
             $url = 'https://api.nopaperforms.com/dataporting/434/career_mantra';
-            $payload = [
-                'college_id' => '434',
-                'name' => (string) ($lead['name'] ?? ''),
-                'email' => (string) ($lead['email'] ?? ''),
-                'mobile' => (string) ($lead['phone'] ?? ''),
-                'source' => 'career_mantra',
-                'state' => $leadState,
-                'city' => (string) ($lead['city'] ?? ''),
-                'course' => (string) ($lead['course'] ?? ''),
-                'secret_key' => (string) ($colleague['api_token'] ?? ''),
-            ];
             break;
 
         case 'GIBS':
             $url = 'https://api.nopaperforms.com/dataporting/374/career_mantra';
-            $payload = [
-                'college_id' => '374',
-                'name' => (string) ($lead['name'] ?? ''),
-                'email' => (string) ($lead['email'] ?? ''),
-                'country_dial_code' => '+91',
-                'mobile' => (string) ($lead['phone'] ?? ''),
-                'source' => 'career_mantra',
-                'state' => $leadState,
-                'city' => (string) ($lead['city'] ?? ''),
-                'course' => (string) ($lead['course'] ?? ''),
-                'secret_key' => (string) ($colleague['api_token'] ?? ''),
-            ];
             break;
 
         case 'Alliance':
             $url = 'https://api.nopaperforms.com/dataporting/207/career_mantra';
-            $payload = [
-                'college_id' => '207',
-                'source' => 'career_mantra',
-                'name' => (string) ($lead['name'] ?? ''),
-                'email' => (string) ($lead['email'] ?? ''),
-                'mobile' => (string) ($lead['phone'] ?? ''),
-                'state' => $leadState,
-                'city' => (string) ($lead['city'] ?? ''),
-                'campus' => (string) ($lead['campus'] ?? ''),
-                'course' => (string) ($lead['course'] ?? ''),
-                'secret_key' => (string) ($colleague['api_token'] ?? ''),
-            ];
             break;
 
         case 'KKMU':
             $url = 'https://api.nopaperforms.com/dataporting/692/career_mantra';
-            $payload = [
-                'college_id' => '692',
-                'source' => 'career_mantra',
-                'name' => (string) ($lead['name'] ?? ''),
-                'email' => (string) ($lead['email'] ?? ''),
-                'mobile' => (string) ($lead['phone'] ?? ''),
-                'state' => $leadState,
-                'city' => (string) ($lead['city'] ?? ''),
-                'campus' => (string) ($lead['campus'] ?? ''),
-                'university_id' => 'UG',
-                'course' => (string) ($lead['course'] ?? ''),
-                'specialization' => (string) ($lead['specialization'] ?? ''),
-                'secret_key' => (string) ($colleague['api_token'] ?? ''),
-            ];
             break;
 
         case 'PPSU':
             $url = 'https://api.in5.nopaperforms.com/dataporting/5562/career_mantra';
-            $payload = [
-                'college_id' => '5562',
-                'name' => (string) ($lead['name'] ?? ''),
-                'email' => (string) ($lead['email'] ?? ''),
-                'mobile' => (string) ($lead['phone'] ?? ''),
-                'source' => 'career_mantra',
-                'state' => $leadState,
-                'city' => (string) ($lead['city'] ?? ''),
-                'campus' => (string) ($lead['campus'] ?? ''),
-                'course' => (string) ($lead['course'] ?? ''),
-                'specialization' => (string) ($lead['specialization'] ?? ''),
-                'secret_key' => (string) ($colleague['api_token'] ?? ''),
-            ];
             break;
 
         case 'PBS':
             $url = 'https://thirdpartyapi.extraaedge.com/api/SaveRequest/';
-            $payload = [
-                'AuthToken' => (string) ($colleague['api_token'] ?? ''),
-                'Source' => 'pcet',
-                'FirstName' => (string) ($lead['name'] ?? ''),
-                'Email' => (string) ($lead['email'] ?? ''),
-                'State' => $leadState,
-                'City' => (string) ($lead['city'] ?? ''),
-                'MobileNumber' => (string) ($lead['phone'] ?? ''),
-                'leadName' => 'Consultants',
-                'LeadSource' => 'Mh. Alam_Career Mantra',
-                'LeadCampaign' => 'Email',
-                'LeadChannel' => 'Consultants',
-                'Course' => (string) ($lead['course'] ?? ''),
-                'Center' => 'PBS',
-                'Location' => (string) ($lead['campus'] ?? 'PGDM'),
-                'Entity4' => (string) ($lead['specialization'] ?? ''),
-            ];
+            break;
+
+        case 'PCU':
+            $url = $url !== '' ? $url : 'https://api.in8.nopaperforms.com/dataporting/5674/career_mantra';
             break;
 
         case 'Lexicon':
             $url = 'https://api.nopaperforms.com/dataporting/375/career_mantra';
-            $payload = [
-                'college_id' => '375',
-                'source' => 'career_mantra',
-                'name' => (string) ($lead['name'] ?? ''),
-                'email' => (string) ($lead['email'] ?? ''),
-                'mobile' => (string) ($lead['phone'] ?? ''),
-                'state' => $leadState,
-                'city' => (string) ($lead['city'] ?? ''),
-                'campus' => (string) ($lead['campus'] ?? ''),
-                'course' => (string) ($lead['course'] ?? ''),
-                'secret_key' => (string) ($colleague['api_token'] ?? ''),
-            ];
             break;
 
         default:
@@ -359,18 +246,6 @@ function buildLeadPushRequest(array $lead, string $college_id, ?array $colleague
                 ];
             }
 
-            $payload = [
-                'lead_id' => (string) ($lead['lead_id'] ?? ''),
-                'name' => (string) ($lead['name'] ?? ''),
-                'email' => (string) ($lead['email'] ?? ''),
-                'mobile' => (string) ($lead['phone'] ?? ''),
-                'state' => $leadState,
-                'city' => (string) ($lead['city'] ?? ''),
-                'course' => (string) ($lead['course'] ?? ''),
-                'specialization' => (string) ($lead['specialization'] ?? ''),
-                'campus' => (string) ($lead['campus'] ?? ''),
-                'college_name' => (string) ($lead['college_name'] ?? ''),
-            ];
             break;
     }
 
@@ -844,7 +719,3 @@ function process_batch_region_push_to_all_colleges(string $batchId): array
 
     return $result;
 }
-
-
-
-

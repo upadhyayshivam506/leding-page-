@@ -87,6 +87,8 @@ CREATE TABLE `colleagues` (
   `region` VARCHAR(50) NOT NULL,
   `api_url` VARCHAR(255) DEFAULT NULL,
   `api_token` VARCHAR(255) DEFAULT NULL,
+  `recommended_source` VARCHAR(120) DEFAULT NULL,
+  `external_college_id` VARCHAR(100) DEFAULT NULL,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
@@ -102,17 +104,31 @@ COLLATE=utf8mb4_unicode_ci;
 -- Create table: lead_push_logs
 CREATE TABLE `lead_push_logs` (
   `id` BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+  `mapping_configuration_id` BIGINT(20) UNSIGNED DEFAULT NULL,
+  `job_token` VARCHAR(120) DEFAULT NULL,
+  `batch_id` VARCHAR(100) DEFAULT NULL,
   `lead_id` VARCHAR(100) NOT NULL,
   `region` VARCHAR(50) NOT NULL,
   `college_id` VARCHAR(100) NOT NULL,
+  `college_name` VARCHAR(190) DEFAULT NULL,
+  `api_url` VARCHAR(255) DEFAULT NULL,
+  `course` VARCHAR(190) DEFAULT NULL,
+  `specialization` VARCHAR(190) DEFAULT NULL,
+  `total_records` INT NOT NULL DEFAULT 1,
+  `status` VARCHAR(50) DEFAULT NULL,
   `api_status` VARCHAR(50) NOT NULL,
+  `response_message` LONGTEXT DEFAULT NULL,
   `response` LONGTEXT DEFAULT NULL,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
   PRIMARY KEY (`id`),
+  KEY `lead_push_logs_batch_id_index` (`batch_id`),
   KEY `lead_push_logs_lead_id_index` (`lead_id`),
   KEY `lead_push_logs_region_index` (`region`),
-  KEY `lead_push_logs_college_id_index` (`college_id`)
+  KEY `lead_push_logs_college_id_index` (`college_id`),
+  KEY `lead_push_logs_status_index` (`status`),
+  KEY `lead_push_logs_job_token_index` (`job_token`)
 
 ) ENGINE=InnoDB 
 DEFAULT CHARSET=utf8mb4 
@@ -128,6 +144,8 @@ CREATE TABLE `lead_mapping_configurations` (
   `selected_courses` JSON NOT NULL,
   `selected_specialization` VARCHAR(190) DEFAULT NULL,
   `selected_colleges` JSON NOT NULL,
+  `course_conversion_json` JSON DEFAULT NULL,
+  `specialization_conversion_json` JSON DEFAULT NULL,
   `total_leads` INT NOT NULL DEFAULT 0,
   `status` VARCHAR(50) NOT NULL DEFAULT 'previewed',
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -150,6 +168,8 @@ CREATE TABLE `lead_mapping_jobs` (
   `job_token` VARCHAR(120) NOT NULL,
   `batch_size` INT NOT NULL,
   `delay_seconds` DECIMAL(8,2) NOT NULL DEFAULT 0.20,
+  `start_time` TIME DEFAULT NULL,
+  `end_time` TIME DEFAULT NULL,
   `status` VARCHAR(50) NOT NULL DEFAULT 'queued',
   `total_leads` INT NOT NULL DEFAULT 0,
   `total_requests` INT NOT NULL DEFAULT 0,
@@ -158,6 +178,7 @@ CREATE TABLE `lead_mapping_jobs` (
   `success_count` INT NOT NULL DEFAULT 0,
   `failed_count` INT NOT NULL DEFAULT 0,
   `colleges_json` JSON NOT NULL,
+  `leads_json` LONGTEXT DEFAULT NULL,
   `started_at` DATETIME DEFAULT NULL,
   `completed_at` DATETIME DEFAULT NULL,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -173,6 +194,41 @@ DEFAULT CHARSET=utf8mb4
 COLLATE=utf8mb4_unicode_ci;
 
 
+-- Create table: leads_main_table
+CREATE TABLE `leads_main_table` (
+  `id` BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+  `mapping_configuration_id` BIGINT(20) UNSIGNED DEFAULT NULL,
+  `job_token` VARCHAR(120) DEFAULT NULL,
+  `batch_id` VARCHAR(100) DEFAULT NULL,
+  `source_lead_id` VARCHAR(100) NOT NULL,
+  `college_id` VARCHAR(100) DEFAULT NULL,
+  `college_name` VARCHAR(190) DEFAULT NULL,
+  `name` VARCHAR(190) DEFAULT NULL,
+  `email` VARCHAR(190) DEFAULT NULL,
+  `mobile` VARCHAR(50) DEFAULT NULL,
+  `phone` VARCHAR(50) DEFAULT NULL,
+  `course` VARCHAR(190) DEFAULT NULL,
+  `specialization` VARCHAR(190) DEFAULT NULL,
+  `state` VARCHAR(120) DEFAULT NULL,
+  `city` VARCHAR(120) DEFAULT NULL,
+  `region` VARCHAR(50) DEFAULT NULL,
+  `push_status` VARCHAR(50) NOT NULL DEFAULT 'pending',
+  `response_message` LONGTEXT DEFAULT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (`id`),
+  KEY `leads_main_table_batch_id_index` (`batch_id`),
+  KEY `leads_main_table_source_lead_id_index` (`source_lead_id`),
+  KEY `leads_main_table_college_id_index` (`college_id`),
+  KEY `leads_main_table_push_status_index` (`push_status`),
+  KEY `leads_main_table_job_token_index` (`job_token`)
+
+) ENGINE=InnoDB
+DEFAULT CHARSET=utf8mb4
+COLLATE=utf8mb4_unicode_ci;
+
+
 -- Create table: lead_api_logs
 CREATE TABLE `lead_api_logs` (
   `id` BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -182,11 +238,13 @@ CREATE TABLE `lead_api_logs` (
   `lead_id` VARCHAR(100) NOT NULL,
   `name` VARCHAR(190) DEFAULT NULL,
   `email` VARCHAR(190) DEFAULT NULL,
+  `mobile` VARCHAR(50) DEFAULT NULL,
   `phone` VARCHAR(50) DEFAULT NULL,
   `course` VARCHAR(190) DEFAULT NULL,
   `specialization` VARCHAR(190) DEFAULT NULL,
   `campus` VARCHAR(190) DEFAULT NULL,
   `college_name` VARCHAR(190) NOT NULL,
+  `api_url` VARCHAR(255) DEFAULT NULL,
   `city` VARCHAR(120) DEFAULT NULL,
   `state` VARCHAR(120) DEFAULT NULL,
   `region` VARCHAR(50) DEFAULT NULL,

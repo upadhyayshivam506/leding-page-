@@ -74,6 +74,8 @@ final class DashboardController
             'page_action' => '',
             'upload_button_html' => $this->uploadButtonHtml(),
             'export_button_html' => $this->exportButtonHtml(),
+            'send_to_college_url' => e(app_url('api/leads/send-to-college')),
+            'colleges_catalog_attr_json' => $this->jsonAttribute($this->leadMapping->collegesCatalog()),
             'leads_api_url' => e(app_url('api/leads')),
             'leads_export_url' => e(app_url('api/leads/export')),
             'lead_push_status_url' => e(app_url('api/lead-push-job-status')),
@@ -122,6 +124,56 @@ final class DashboardController
                 'status' => 'error',
                 'message' => $exception->getMessage() !== '' ? $exception->getMessage() : 'Unable to load leads.',
             ], 422);
+        }
+    }
+
+    public function sendSelectedLeadsToCollege(): void
+    {
+        $this->guard();
+
+        try {
+            $payload = $this->requestJsonPayload();
+            $selectedIds = array_values(array_unique(array_filter(array_map(
+                static fn ($id): int => (int) $id,
+                (array) ($payload['selected_ids'] ?? [])
+            ), static fn (int $id): bool => $id > 0)));
+            $collegeId = trim((string) ($payload['college_id'] ?? ''));
+
+            if ($selectedIds === []) {
+                throw new RuntimeException('Select one or more leads before sending.');
+            }
+
+            if ($collegeId === '') {
+                throw new RuntimeException('Select one college before sending.');
+            }
+
+            $rows = $this->leads->findByIds($selectedIds);
+            if ($rows === []) {
+                throw new RuntimeException('Selected leads were not found.');
+            }
+
+            $result = $this->leadMapping->sendSelectedLeadsToCollege($rows, $collegeId);
+
+            $this->jsonResponse([
+                'status' => !empty($result['success']) ? 'success' : 'error',
+                'message' => (string) ($result['response_message'] ?? ''),
+                'data' => [
+                    'college_name' => (string) ($result['college_name'] ?? ''),
+                    'total' => (int) ($result['total'] ?? 0),
+                    'success_count' => (int) ($result['success_count'] ?? 0),
+                    'failed_count' => (int) ($result['failed_count'] ?? 0),
+                ],
+            ], !empty($result['success']) ? 200 : 422);
+        } catch (RuntimeException $exception) {
+            $this->jsonResponse([
+                'status' => 'error',
+                'message' => $exception->getMessage() !== '' ? $exception->getMessage() : 'Failed to send selected leads. Please try again.',
+            ], 422);
+        } catch (\Throwable $exception) {
+            $this->jsonResponse([
+                'status' => 'error',
+                'message' => 'Failed to send selected leads. Please try again.',
+            ], 500);
         }
     }
 
@@ -364,7 +416,7 @@ final class DashboardController
             'title' => e('Region Mapping'),
             'page_kicker' => e('Step 2 of 4'),
             'page_title' => e('Region Grouping'),
-            'page_description' => e('Review region grouping, continue directly to assignments, or open the specialization courses mapping page.'),
+            'page_description' => e('Review region grouping, continue directly to assignments, or launch the Courses Convert workflow.'),
             'flash_alert' => '',
             'page_action' => '<a href="' . e(app_url('leads/mapping')) . '" class="panel-link topbar-action-link">Back</a>',
             'uploaded_file_name' => e((string) ($upload['original_name'] ?? '')),
@@ -379,18 +431,16 @@ final class DashboardController
             'region_summary_attr_json' => $this->jsonAttribute($summary),
             'available_columns_attr_json' => $this->jsonAttribute($this->leadMapping->availableColumns()),
             'colleges_catalog_attr_json' => $this->jsonAttribute($this->leadMapping->collegesCatalog()),
-            'generate_preview_url' => e(app_url('leads/mapping/generate-preview.php')),
-            'preview_page_url' => e(app_url('leads/mapping/mapping-courses-specialization')),
             'duration_defaults_attr_json' => $this->jsonAttribute($durationDefaults),
             'uploaded_batch_id' => e($batchId),
             'mapping_step' => 'region',
             'mapping_region_url' => e(app_url('leads/mapping/region')),
-            'mapping_region_courses_url' => e(app_url('leads/mapping/region/courses-mapping')),
+            'mapping_region_courses_convert_url' => e(app_url('leads/mapping/region/courses-convert')),
             'mapping_api_url' => e(app_url('leads/mapping/region/api-colleagues')),
         ]);
     }
 
-    public function mappingRegionCoursesMapping(): void
+    public function mappingRegionCoursesConvert(): void
     {
         $user = $this->guard();
         $upload = $this->uploadedFileOrRedirect();
@@ -398,11 +448,11 @@ final class DashboardController
         $rows = $this->leadDataForBatch($batchId)['rows'];
         $summary = $this->leads->summarizeByBatch($batchId);
 
-        $this->renderAdminPage($user, 'leads', 'leads/pages/mapping-region-courses', [
-            'title' => e('Specialization Courses Mapping'),
+        $this->renderAdminPage($user, 'leads', 'leads/pages/mapping-region-courses-convert', [
+            'title' => e('Courses Convert'),
             'page_kicker' => e('Step 3 of 4'),
-            'page_title' => e('Specialization Courses Mapping'),
-            'page_description' => e('Select detected course values, specialization, and colleges, then confirm the mapping to continue to API Duration.'),
+            'page_title' => e('Courses Convert'),
+            'page_description' => e('Convert detected courses and specialization values from the uploaded leads, preview the result live, and continue to API Duration.'),
             'flash_alert' => '',
             'page_action' => '<a href="' . e(app_url('leads/mapping/region')) . '" class="panel-link topbar-action-link">Back</a>',
             'uploaded_file_name' => e((string) ($upload['original_name'] ?? '')),
@@ -410,24 +460,212 @@ final class DashboardController
             'region_rows_attr_json' => $this->jsonAttribute($rows),
             'region_summary_attr_json' => $this->jsonAttribute($summary),
             'colleges_catalog_attr_json' => $this->jsonAttribute($this->leadMapping->collegesCatalog()),
-            'generate_preview_url' => e(app_url('leads/mapping/generate-preview.php')),
-            'preview_page_url' => e(app_url('leads/mapping/mapping-courses-specialization')),
+            'confirm_courses_convert_url' => e(app_url('leads/mapping/region/courses-convert/confirm.php')),
+            'courses_convert_api_duration_url' => e(app_url('leads/mapping/region/courses-convert/api-duration')),
             'mapping_region_url' => e(app_url('leads/mapping/region')),
-            'mapping_step' => 'specialization-mapping',
+            'mapping_step' => 'courses-convert',
         ]);
+    }
+
+    public function confirmCoursesConvert(): void
+    {
+        $this->guard();
+        $upload = $this->uploadedFileOrRedirect();
+
+        ob_start();
+        header('Content-Type: application/json');
+        ob_clean();
+
+        try {
+            $payload = $this->requestJsonPayload();
+            $rows = $this->leadDataForBatch((string) ($upload['batch_id'] ?? ''))['rows'];
+            $regions = $this->leadMapping->normalizeRegions((array) ($payload['regions'] ?? []));
+            $detectedCourses = $this->leadMapping->uniqueCourseValues($rows, $regions);
+            $courseConversions = $this->normalizeCoursesConvertMap((array) ($payload['course_conversions'] ?? []), $detectedCourses);
+            $specializationOverrides = $this->normalizeCoursesConvertMap((array) ($payload['specialization_overrides'] ?? []), $detectedCourses);
+            $collegeIds = $this->leadMapping->normalizeCollegeIds((array) ($payload['college_ids'] ?? []));
+
+            if ($collegeIds === []) {
+                throw new RuntimeException('Select one or more colleges before confirming the mapping.');
+            }
+
+            $preview = $this->buildCoursesConvertPreview($rows, $regions, $courseConversions, $specializationOverrides, $collegeIds);
+            if ((int) ($preview['total'] ?? 0) <= 0) {
+                throw new RuntimeException('No leads matched the selected region filters.');
+            }
+
+            $mappingConfigurationId = $this->leadMapping->createMappingConfiguration(
+                (string) ($upload['batch_id'] ?? ''),
+                $regions,
+                'Courses Convert',
+                (array) ($preview['detected_courses'] ?? []),
+                '',
+                $collegeIds,
+                (int) ($preview['total'] ?? 0),
+                $courseConversions,
+                $specializationOverrides
+            );
+            $this->leadMapping->markConfigurationConfirmed($mappingConfigurationId);
+
+            $preview['mapping_configuration_id'] = $mappingConfigurationId;
+            $preview['batch_id'] = (string) ($upload['batch_id'] ?? '');
+            $preview['confirmed'] = true;
+
+            $_SESSION['courses_convert_preview'] = $preview;
+            $_SESSION['leads_list'] = (array) ($preview['api_rows'] ?? []);
+            $_SESSION['region_assignments'] = (array) ($preview['assignments'] ?? []);
+            $_SESSION['selected_colleges'] = (array) ($preview['college_ids'] ?? []);
+
+            echo json_encode([
+                'status' => 'success',
+                'data' => [
+                    'redirect' => app_url('leads/mapping/region/courses-convert/api-duration'),
+                ],
+                'total' => (int) ($preview['total'] ?? 0),
+            ]);
+        } catch (\Throwable $e) {
+            http_response_code(422);
+            echo json_encode([
+                'status' => 'error',
+                'message' => $e->getMessage() !== '' ? $e->getMessage() : 'Unable to confirm the courses convert mapping.',
+            ]);
+        }
+
+        exit;
+    }
+
+    public function mappingRegionCoursesConvertApiDuration(): void
+    {
+        $user = $this->guard();
+        $upload = $this->uploadedFileOrRedirect();
+        $preview = $this->coursesConvertPreviewOrRedirect();
+        $previewTable = $this->buildTableView(
+            $this->coursesConvertPreviewHeaders(),
+            (array) ($preview['preview_rows'] ?? []),
+            current_page_number(),
+            self::TABLE_PAGE_SIZE,
+            'leads/mapping/region/courses-convert/api-duration',
+            'No converted leads are available for preview.',
+            'leads'
+        );
+
+        $this->renderAdminPage($user, 'leads', 'leads/pages/mapping-region-courses-convert-api-duration', [
+            'title' => e('API Duration'),
+            'page_kicker' => e('Step 4 of 4'),
+            'page_title' => e('API Duration'),
+            'page_description' => e('Review the converted leads snapshot, capture send settings, and push the mapped rows to the selected colleges API.'),
+            'flash_alert' => '',
+            'page_action' => '<a href="' . e(app_url('leads/mapping/region/courses-convert')) . '" class="panel-link topbar-action-link">Back</a>',
+            'uploaded_file_name' => e((string) ($upload['original_name'] ?? '')),
+            'uploaded_batch_id' => e((string) ($preview['batch_id'] ?? '')),
+            'preview_total_records' => e((string) ($preview['total'] ?? 0)),
+            'preview_selected_regions' => e(implode(', ', (array) ($preview['regions'] ?? []))),
+            'preview_selected_courses' => e(implode(', ', (array) ($preview['converted_courses'] ?? []))),
+            'preview_selected_specialization' => e(implode(', ', (array) ($preview['specializations'] ?? []))),
+            'preview_selected_colleges' => e(implode(', ', (array) ($preview['colleges'] ?? []))),
+            'main_table_head_html' => $previewTable['table_head_html'],
+            'main_table_body_html' => $previewTable['table_body_html'],
+            'main_table_pagination_html' => $previewTable['pagination_html'],
+            'main_table_count_label' => e($previewTable['count_label']),
+            'courses_convert_send_url' => e(app_url('leads/mapping/region/courses-convert/send.php')),
+            'courses_convert_preview_rows_attr_json' => $this->jsonAttribute((array) ($preview['preview_rows'] ?? [])),
+            'courses_convert_api_rows_attr_json' => $this->jsonAttribute((array) ($preview['api_rows'] ?? [])),
+            'courses_convert_regions_attr_json' => $this->jsonAttribute((array) ($preview['regions'] ?? [])),
+            'courses_convert_courses_attr_json' => $this->jsonAttribute((array) ($preview['converted_courses'] ?? [])),
+            'courses_convert_specializations_attr_json' => $this->jsonAttribute((array) ($preview['specializations'] ?? [])),
+            'selected_college_names_attr_json' => $this->jsonAttribute((array) ($preview['colleges'] ?? [])),
+            'region_assignments_attr_json' => $this->jsonAttribute((array) ($preview['assignments'] ?? [])),
+            'region_summary_attr_json' => $this->jsonAttribute($this->summaryFromGroupedRows($this->leadMapping->groupRowsByRegion((array) ($preview['api_rows'] ?? [])))),
+            'lead_push_status_url' => e(app_url('api/lead-push-job-status')),
+            'leads_page_url' => e(app_url('leads')),
+            'api_duration_total_leads' => e((string) ($preview['total'] ?? 0)),
+            'mapping_configuration_id' => e((string) ($preview['mapping_configuration_id'] ?? 0)),
+            'mapping_step' => 'api-duration',
+        ]);
+    }
+
+    public function sendCoursesConvertLeads(): void
+    {
+        $this->guard();
+
+        ob_start();
+        header('Content-Type: application/json');
+        ob_clean();
+
+        try {
+            $payload = $this->requestJsonPayload();
+            $upload = $this->uploadedFileOrRedirect();
+            $preview = $this->coursesConvertPreviewOrRedirect(false);
+            $rows = $this->normalizeLeadRowsPayload((array) ($payload['leads_data'] ?? []));
+            if ($rows === []) {
+                $rows = (array) ($preview['api_rows'] ?? []);
+            }
+
+            $batchSize = $this->normalizeBatchSize($payload['batch_size'] ?? 50, null);
+            $delay = $this->normalizeDelay($payload['delay_between_requests'] ?? ($payload['delay'] ?? '0.35'), null);
+            $startTime = $this->normalizeScheduleTime($payload['start_time'] ?? null);
+            $endTime = $this->normalizeScheduleTime($payload['end_time'] ?? null);
+            $assignments = $this->normalizeAssignments((array) ($preview['assignments'] ?? []));
+            $mappingConfigurationId = (int) ($preview['mapping_configuration_id'] ?? 0);
+
+            if ($mappingConfigurationId <= 0) {
+                throw new RuntimeException('Converted mapping session is missing.');
+            }
+
+            $_SESSION['region_assignments'] = $assignments;
+            $_SESSION['selected_colleges'] = $this->flattenAssignmentCollegeIds($assignments);
+            $_SESSION['leads_list'] = $rows;
+            $_SESSION['batch_size'] = $batchSize;
+            $_SESSION['delay'] = $delay;
+            $_SESSION['courses_convert_schedule'] = [
+                'start_time' => $startTime,
+                'end_time' => $endTime,
+            ];
+
+            $job = $this->leadMapping->createOrReuseJob(
+                $mappingConfigurationId,
+                (string) ($upload['batch_id'] ?? ''),
+                $batchSize,
+                $delay,
+                $rows,
+                $assignments,
+                [
+                    'start_time' => $startTime,
+                    'end_time' => $endTime,
+                ]
+            );
+
+            $this->leadMapping->spawnBackgroundJob((string) ($job['job_token'] ?? ''));
+
+            echo json_encode([
+                'status' => 'success',
+                'data' => [
+                    'confirmation' => 'Courses Convert send workflow queued successfully.',
+                    'message' => 'Converted leads are being pushed to the selected colleges API in the background.',
+                    'redirect' => app_url('leads?lead_push_job_token=' . rawurlencode((string) ($job['job_token'] ?? '')) . '&lead_push_total=' . count($rows)),
+                    'job_token' => (string) ($job['job_token'] ?? ''),
+                ],
+                'total' => count($rows),
+            ]);
+        } catch (\Throwable $e) {
+            http_response_code(422);
+            echo json_encode([
+                'status' => 'error',
+                'message' => $e->getMessage() !== '' ? $e->getMessage() : 'Unable to send converted leads to the colleges API.',
+            ]);
+        }
+
+        exit;
     }
 
     public function mappingApiColleagues(): void
     {
         $user = $this->guard();
         $upload = $this->uploadedFileOrRedirect();
-        $preview = $_SESSION['mapping_preview'] ?? null;
-        $rows = is_array($preview) && isset($preview['data']) && is_array($preview['data'])
-            ? (array) $preview['data']
+        $rows = isset($_SESSION['leads_list']) && is_array($_SESSION['leads_list'])
+            ? (array) $_SESSION['leads_list']
             : $this->leadDataForBatch((string) ($upload['batch_id'] ?? ''))['rows'];
-        $grouped = is_array($preview) && isset($preview['grouped']) && is_array($preview['grouped'])
-            ? (array) $preview['grouped']
-            : $this->leadMapping->groupRowsByRegion($rows);
+        $grouped = $this->leadMapping->groupRowsByRegion($rows);
         $assignmentPreviewTable = $this->buildTableView(
             $this->batchLeadHeaders(),
             $rows,
@@ -459,7 +697,7 @@ final class DashboardController
             'main_table_count_label' => e($assignmentPreviewTable['count_label']),
             'lead_rows_attr_json' => $this->jsonAttribute($rows),
             'region_summary_attr_json' => $this->jsonAttribute($summary),
-            'colleague_catalog_attr_json' => $this->jsonAttribute($this->leadMapping->colleagueCatalogByRegion()),
+            'colleague_catalog_attr_json' => $this->jsonAttribute($this->leadMapping->colleagueSelectionCatalogByRegion()),
             'confirm_assign_url' => e(app_url('leads/mapping/confirm-assignments.php')),
             'mapping_api_duration_url' => e(app_url('leads/mapping/api-duration')),
             'region_assignments_attr_json' => $this->jsonAttribute($assignments),
@@ -475,179 +713,6 @@ final class DashboardController
         ]);
     }
 
-    public function generateCourseMappingPreview(): void
-    {
-        $this->guard();
-        $upload = $this->uploadedFileOrRedirect();
-
-        ob_start();
-        header('Content-Type: application/json');
-        ob_clean();
-
-        try {
-            $payload = $this->requestJsonPayload();
-            $regions = $this->leadMapping->normalizeRegions((array) ($payload['regions'] ?? []));
-            $column = trim((string) ($payload['column'] ?? 'Course'));
-            $courses = $this->leadMapping->normalizeCourseValues((array) ($payload['course_values'] ?? []));
-            $specialization = trim((string) ($payload['specialization'] ?? ''));
-            $colleges = $this->leadMapping->normalizeCollegeIds((array) ($payload['college_ids'] ?? []));
-            $rows = $this->leadDataForBatch((string) ($upload['batch_id'] ?? ''))['rows'];
-
-            if ($colleges === []) {
-                throw new RuntimeException('Select one or more colleges before confirming the mapping.');
-            }
-
-            if ($specialization === '') {
-                throw new RuntimeException('Select one specialization before confirming the mapping.');
-            }
-
-            $leads = $this->leadMapping->filterPreviewRows($rows, $regions, $courses, $specialization);
-            if ($leads === []) {
-                throw new RuntimeException('No leads matched the selected region, course, and specialization filters.');
-            }
-
-            $mappingConfigurationId = $this->leadMapping->createMappingConfiguration(
-                (string) ($upload['batch_id'] ?? ''),
-                $regions,
-                $column,
-                $courses,
-                $specialization,
-                $colleges,
-                count($leads)
-            );
-
-            $_SESSION['mapping_preview'] = [
-                'mapping_configuration_id' => $mappingConfigurationId,
-                'batch_id' => (string) ($upload['batch_id'] ?? ''),
-                'regions' => $regions,
-                'column' => $column,
-                'course_values' => $courses,
-                'specialization' => $specialization,
-                'college_ids' => $colleges,
-                'colleges' => $this->selectedCollegeNames($colleges),
-                'data' => $leads,
-                'total' => count($leads),
-                'grouped' => $this->leadMapping->groupRowsByRegion($leads),
-                'confirmed' => false,
-            ];
-            $_SESSION['mapped_leads'] = $leads;
-            $_SESSION['leads_list'] = $leads;
-            $_SESSION['selected_colleges'] = $this->selectedCollegeNames($colleges);
-            $_SESSION['region_assignments'] = $this->deriveAssignmentsFromPreview($regions, $colleges);
-
-            echo json_encode([
-                'status' => 'success',
-                'data' => $leads,
-                'total' => count($leads),
-            ]);
-        } catch (\Throwable $e) {
-            http_response_code(422);
-            echo json_encode([
-                'status' => 'error',
-                'message' => $e->getMessage() !== '' ? $e->getMessage() : 'Unable to confirm the mapping.',
-            ]);
-        }
-
-        exit;
-    }
-
-    public function mappingCoursesSpecialization(): void
-    {
-        $user = $this->guard();
-        $upload = $this->uploadedFileOrRedirect();
-        $preview = $this->mappingPreviewOrRedirect();
-        $durationDefaults = $this->durationDefaults();
-        $assignments = $this->regionAssignmentsFromPreview($preview);
-        $selectedCollegeIds = $this->flattenAssignmentCollegeIds($assignments);
-        $summary = $this->summaryFromGroupedRows((array) ($preview['grouped'] ?? []));
-        $previewTable = $this->buildTableView(
-            $this->batchLeadHeaders(),
-            (array) ($preview['data'] ?? []),
-            current_page_number(),
-            self::TABLE_PAGE_SIZE,
-            'leads/mapping/mapping-courses-specialization',
-            'No leads available in preview.',
-            'leads'
-        );
-
-        $this->renderAdminPage($user, 'leads', 'leads/pages/mapping-courses-specialization', [
-            'title' => e('API Duration Configuration'),
-            'page_kicker' => e('Step 4 of 4'),
-            'page_title' => e('API Duration Configuration'),
-            'page_description' => e('Review the confirmed specialization mapping, configure the API duration settings, and start sending leads.'),
-            'flash_alert' => '',
-            'page_action' => '<a href="' . e(app_url('leads/mapping/region/courses-mapping')) . '" class="panel-link topbar-action-link">Back</a>',
-            'uploaded_file_name' => e((string) ($upload['original_name'] ?? '')),
-            'uploaded_batch_id' => e((string) ($preview['batch_id'] ?? '')),
-            'preview_total_records' => e((string) ($preview['total'] ?? 0)),
-            'main_table_head_html' => $previewTable['table_head_html'],
-            'main_table_body_html' => $previewTable['table_body_html'],
-            'main_table_pagination_html' => $previewTable['pagination_html'],
-            'main_table_count_label' => e($previewTable['count_label']),
-            'preview_region_groups_html' => $this->renderRegionGroupCards(
-                (array) ($preview['grouped'] ?? []),
-                10,
-                'Preview rows grouped region-wise.',
-                'No preview rows in this region.'
-            ),
-            'preview_selected_regions' => e(implode(', ', (array) ($preview['regions'] ?? []))),
-            'preview_selected_courses' => e(implode(', ', (array) ($preview['course_values'] ?? []))),
-            'preview_selected_specialization' => e((string) ($preview['specialization'] ?? '')),
-            'preview_selected_colleges' => e(implode(', ', (array) ($preview['colleges'] ?? []))),
-            'confirm_mapping_url' => e(app_url('leads/mapping/confirm-mapping.php')),
-            'save_duration_url' => e(app_url('leads/mapping/save-duration-settings.php')),
-            'lead_push_status_url' => e(app_url('api/lead-push-job-status')),
-            'leads_page_url' => e(app_url('leads')),
-            'duration_defaults_attr_json' => $this->jsonAttribute($durationDefaults),
-            'api_duration_total_leads' => e((string) ($preview['total'] ?? 0)),
-            'lead_rows_attr_json' => $this->jsonAttribute((array) ($preview['data'] ?? [])),
-            'region_summary_attr_json' => $this->jsonAttribute($summary),
-            'region_assignments_attr_json' => $this->jsonAttribute($assignments),
-            'selected_college_names_attr_json' => $this->jsonAttribute($this->selectedCollegeNames($selectedCollegeIds)),
-            'api_duration_selection_value' => e((string) ($_SESSION['api_duration_selection'] ?? '0.35')),
-            'mapping_configuration_id' => e((string) ($preview['mapping_configuration_id'] ?? 0)),
-            'mapping_confirmed_state' => !empty($preview['confirmed']) ? 'true' : 'false',
-            'mapping_region_courses_url' => e(app_url('leads/mapping/region/courses-mapping')),
-            'mapping_step' => 'api-duration',
-        ]);
-    }
-
-    public function confirmCourseMapping(): void
-    {
-        $this->guard();
-
-        ob_start();
-        header('Content-Type: application/json');
-        ob_clean();
-
-        try {
-            $preview = $this->mappingPreviewOrRedirect(false);
-            $mappingConfigurationId = (int) ($preview['mapping_configuration_id'] ?? 0);
-            if ($mappingConfigurationId <= 0) {
-                throw new RuntimeException('Mapping preview session is missing.');
-            }
-
-            $this->leadMapping->markConfigurationConfirmed($mappingConfigurationId);
-            $_SESSION['mapping_preview']['confirmed'] = true;
-
-            echo json_encode([
-                'status' => 'success',
-                'data' => [
-                    'redirect' => app_url('leads/mapping/mapping-courses-specialization'),
-                ],
-                'total' => (int) ($preview['total'] ?? 0),
-            ]);
-        } catch (\Throwable $e) {
-            http_response_code(422);
-            echo json_encode([
-                'status' => 'error',
-                'message' => $e->getMessage() !== '' ? $e->getMessage() : 'Unable to confirm mapping.',
-            ]);
-        }
-
-        exit;
-    }
-
     public function confirmRegionAssignments(): void
     {
         $this->guard();
@@ -659,9 +724,8 @@ final class DashboardController
         try {
             $payload = $this->requestJsonPayload();
             $upload = $this->uploadedFileOrRedirect();
-            $preview = $_SESSION['mapping_preview'] ?? null;
-            $rows = is_array($preview) && isset($preview['data']) && is_array($preview['data'])
-                ? (array) $preview['data']
+            $rows = isset($_SESSION['leads_list']) && is_array($_SESSION['leads_list'])
+                ? (array) $_SESSION['leads_list']
                 : $this->leadDataForBatch((string) ($upload['batch_id'] ?? ''))['rows'];
             $assignments = $this->normalizeAssignments((array) ($payload['assignments'] ?? []));
 
@@ -735,13 +799,10 @@ final class DashboardController
         try {
             $payload = $this->requestJsonPayload();
             $upload = $this->uploadedFileOrRedirect();
-            $preview = $_SESSION['mapping_preview'] ?? null;
             $rows = isset($_SESSION['leads_list']) && is_array($_SESSION['leads_list'])
                 ? (array) $_SESSION['leads_list']
-                : (is_array($preview) && isset($preview['data']) && is_array($preview['data'])
-                    ? (array) $preview['data']
-                    : $this->leadDataForBatch((string) ($upload['batch_id'] ?? ''))['rows']);
-            $mappingConfigurationId = is_array($preview) ? (int) ($preview['mapping_configuration_id'] ?? 0) : 0;
+                : $this->leadDataForBatch((string) ($upload['batch_id'] ?? ''))['rows'];
+            $mappingConfigurationId = 0;
             $payloadRows = $this->normalizeLeadRowsPayload((array) ($payload['leads_data'] ?? []));
             if ($payloadRows !== []) {
                 $rows = $payloadRows;
@@ -835,13 +896,14 @@ final class DashboardController
             $batchId = trim((string) ($_GET['batch_id'] ?? ''));
             $upload = $this->trackedUploadOrFail($batchId);
             unset(
-                $_SESSION['mapping_preview'],
+                $_SESSION['courses_convert_preview'],
                 $_SESSION['region_assignments'],
                 $_SESSION['leads_list'],
                 $_SESSION['selected_colleges'],
                 $_SESSION['batch_size'],
                 $_SESSION['delay'],
-                $_SESSION['api_duration_selection']
+                $_SESSION['api_duration_selection'],
+                $_SESSION['courses_convert_schedule']
             );
             $_SESSION['last_uploaded_lead_file'] = $this->sessionUploadPayload($upload);
             $rows = [];
@@ -904,7 +966,7 @@ final class DashboardController
             }
 
             fwrite($output, chr(0xEF) . chr(0xBB) . chr(0xBF));
-            fputcsv($output, ['Batch ID', 'Lead ID', 'Name', 'Email', 'Mobile', 'Course', 'Specialization', 'Campus', 'College', 'City', 'State', 'Region', 'Source File', 'Status', 'Attempt', 'Response', 'Created At']);
+            fputcsv($output, ['Batch ID', 'Lead ID', 'Name', 'Email', 'Mobile', 'Course', 'Specialization', 'Campus', 'College', 'API URL', 'City', 'State', 'Region', 'Source File', 'Status', 'Attempt', 'Response', 'Created At']);
 
             foreach ($rows as $row) {
                 fputcsv($output, [
@@ -917,6 +979,7 @@ final class DashboardController
                     (string) ($row['specialization'] ?? ''),
                     (string) ($row['campus'] ?? ''),
                     (string) ($row['college_name'] ?? ''),
+                    (string) ($row['api_url'] ?? ''),
                     (string) ($row['city'] ?? ''),
                     (string) ($row['state'] ?? ''),
                     (string) ($row['region'] ?? ''),
@@ -990,35 +1053,30 @@ final class DashboardController
                 $pagination = pagination_state($totalRecords, $recordsPerPage, $currentPage);
                 $rows = $this->mapLeadListRows($this->leads->paginateByFilters($filters, $pagination['records_per_page'], $pagination['offset']));
 
-                return $this->buildTableFromPagination(
+                return $this->buildLeadTableFromPagination(
                     $headers,
                     $rows,
                     $pagination,
                     'leads',
-                    'Upload a lead file to see lead rows here.',
-                    'leads'
+                    'Upload a lead file to see lead rows here.'
                 );
             }
         } catch (PDOException) {
-            return $this->buildTableView(
+            return $this->buildLeadTableFromPagination(
                 $headers,
                 [],
-                $currentPage,
-                $recordsPerPage,
+                pagination_state(0, $recordsPerPage, $currentPage),
                 'leads',
-                'No leads matched the current search and filters.',
-                'leads'
+                'No leads matched the current search and filters.'
             );
         }
 
-        return $this->buildTableView(
+        return $this->buildLeadTableFromPagination(
             $headers,
             [],
-            $currentPage,
-            $recordsPerPage,
+            pagination_state(0, $recordsPerPage, $currentPage),
             'leads',
-            'No leads matched the current search and filters.',
-            'leads'
+            'No leads matched the current search and filters.'
         );
     }
 
@@ -1256,12 +1314,17 @@ final class DashboardController
 
     private function logHeaders(): array
     {
-        return ['Batch ID', 'Lead ID', 'Name', 'Email', 'Phone', 'Course', 'Specialization', 'Campus', 'College Name', 'City', 'State', 'Region', 'Source File', 'Status', 'Attempt', 'Response', 'Created At'];
+        return ['Batch ID', 'Lead ID', 'Name', 'Email', 'Phone', 'Course', 'Specialization', 'Campus', 'College Name', 'API URL', 'City', 'State', 'Region', 'Source File', 'Status', 'Attempt', 'Response', 'Created At'];
     }
 
     private function mapLeadListRows(array $rows): array
     {
-        return array_map(fn (array $row): array => $this->leadSchema->visibleRow($row, (string) ($row['batch_id'] ?? '')), $rows);
+        return array_map(function (array $row): array {
+            $visible = $this->leadSchema->visibleRow($row, (string) ($row['batch_id'] ?? ''));
+            $visible['__row_id'] = (string) ($row['id'] ?? '');
+
+            return $visible;
+        }, $rows);
     }
 
     private function mapBatchLeadRows(array $rows): array
@@ -1295,6 +1358,7 @@ final class DashboardController
                 'Specialization' => (string) ($row['specialization'] ?? ''),
                 'Campus' => (string) ($row['campus'] ?? ''),
                 'College Name' => (string) ($row['college_name'] ?? ''),
+                'API URL' => (string) ($row['api_url'] ?? ''),
                 'City' => (string) ($row['city'] ?? ''),
                 'State' => (string) ($row['state'] ?? ''),
                 'Region' => (string) ($row['region'] ?? ''),
@@ -1482,6 +1546,63 @@ final class DashboardController
             'pagination_html' => generatePagination((int) $pagination['current_page'], (int) $pagination['total_pages'], $basePath),
             'count_label' => $countLabel,
         ];
+    }
+
+    private function buildLeadTableFromPagination(
+        array $headers,
+        array $rows,
+        array $pagination,
+        string $basePath,
+        string $emptyMessage
+    ): array {
+        $countLabel = $pagination['total_records'] > 0
+            ? 'Showing ' . $pagination['from_record'] . '-' . $pagination['to_record'] . ' of ' . $pagination['total_records'] . ' leads'
+            : '0 leads';
+
+        return [
+            'table_head_html' => $this->renderLeadTableHead($headers),
+            'table_body_html' => $this->renderLeadTableBody($headers, $rows, $emptyMessage),
+            'pagination_html' => generatePagination((int) $pagination['current_page'], (int) $pagination['total_pages'], $basePath),
+            'count_label' => $countLabel,
+        ];
+    }
+
+    private function renderLeadTableHead(array $headers): string
+    {
+        $columns = array_map(
+            static fn (string $header): string => '<th>' . e($header) . '</th>',
+            $headers
+        );
+
+        array_unshift(
+            $columns,
+            '<th class="leads-select-column"><input type="checkbox" class="leads-row-checkbox" data-lead-select-all aria-label="Select all visible leads"></th>'
+        );
+
+        return '<tr>' . implode('', $columns) . '</tr>';
+    }
+
+    private function renderLeadTableBody(array $headers, array $rows, string $emptyMessage): string
+    {
+        if ($rows === []) {
+            return '<tr><td colspan="' . (count($headers) + 1) . '" class="table-empty-state">' . e($emptyMessage) . '</td></tr>';
+        }
+
+        $body = [];
+        foreach ($rows as $row) {
+            $rowId = trim((string) ($row['__row_id'] ?? ''));
+            $cells = [
+                '<td class="leads-select-column"><input type="checkbox" class="leads-row-checkbox" data-lead-select-row value="' . e($rowId) . '" aria-label="Select lead"></td>',
+            ];
+
+            foreach ($headers as $header) {
+                $cells[] = '<td>' . e((string) ($row[$header] ?? '')) . '</td>';
+            }
+
+            $body[] = '<tr data-lead-row-id="' . e($rowId) . '">' . implode('', $cells) . '</tr>';
+        }
+
+        return implode('', $body);
     }
 
     private function renderRegionGroupCards(array $groupedRows, int $previewLimit, string $description, string $emptyMessage): string
@@ -1682,20 +1803,130 @@ final class DashboardController
         return $summary;
     }
 
-    private function mappingPreviewOrRedirect(bool $redirectOnMissing = true): array
+    private function coursesConvertPreviewHeaders(): array
     {
-        $preview = $_SESSION['mapping_preview'] ?? null;
+        return ['Batch ID', 'Lead ID', 'Name', 'Email', 'Phone', 'Region', 'Original Course', 'Converted Course', 'Specialization', 'Selected Colleges', 'Lead Status'];
+    }
 
-        if (is_array($preview) && isset($preview['data']) && is_array($preview['data'])) {
+    private function normalizeCoursesConvertMap(array $mapping, array $allowedKeys): array
+    {
+        $normalized = [];
+        $allowedLookup = array_fill_keys($allowedKeys, true);
+
+        foreach ($mapping as $key => $value) {
+            $source = trim((string) $key);
+            if ($source === '' || !isset($allowedLookup[$source])) {
+                continue;
+            }
+
+            $normalized[$source] = trim((string) $value);
+        }
+
+        return $normalized;
+    }
+
+    private function buildCoursesConvertPreview(
+        array $rows,
+        array $regions,
+        array $courseConversions,
+        array $specializationOverrides,
+        array $collegeIds
+    ): array {
+        $selectedCollegeNames = $this->selectedCollegeNames($collegeIds);
+        $selectedCollegesLabel = implode(', ', $selectedCollegeNames);
+        $previewRows = [];
+        $apiRows = [];
+        $convertedCourses = [];
+        $specializations = [];
+        $detectedCourses = [];
+
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $region = trim((string) ($row['Region'] ?? ''));
+            if (!in_array($region, $regions, true)) {
+                continue;
+            }
+
+            $originalCourse = trim((string) ($row['Course'] ?? ''));
+            if ($originalCourse !== '') {
+                $detectedCourses[$originalCourse] = $originalCourse;
+            }
+
+            $convertedCourse = trim((string) ($courseConversions[$originalCourse] ?? ''));
+            if ($convertedCourse === '') {
+                $convertedCourse = $originalCourse;
+            }
+
+            $specialization = trim((string) ($specializationOverrides[$originalCourse] ?? ''));
+            if ($specialization === '') {
+                $specialization = trim((string) ($row['Specialization'] ?? ''));
+            }
+
+            if ($convertedCourse !== '') {
+                $convertedCourses[$convertedCourse] = $convertedCourse;
+            }
+            if ($specialization !== '') {
+                $specializations[$specialization] = $specialization;
+            }
+
+            $apiRow = $row;
+            $apiRow['Course'] = $convertedCourse;
+            $apiRow['Specialization'] = $specialization;
+            $apiRows[] = $apiRow;
+
+            $previewRows[] = [
+                'Batch ID' => (string) ($row['Batch ID'] ?? ''),
+                'Lead ID' => (string) ($row['__lead_id'] ?? $row['Lead ID'] ?? ''),
+                'Name' => (string) ($row['Name'] ?? ''),
+                'Email' => (string) ($row['Email'] ?? ''),
+                'Phone' => (string) ($row['Mobile'] ?? $row['Phone'] ?? ''),
+                'Region' => $region,
+                'Original Course' => $originalCourse,
+                'Converted Course' => $convertedCourse,
+                'Specialization' => $specialization,
+                'Selected Colleges' => $selectedCollegesLabel,
+                'Lead Status' => (string) ($row['Status'] ?? ''),
+            ];
+        }
+
+        $assignments = array_fill_keys($this->leadMapping->regions(), []);
+        foreach ($regions as $region) {
+            $assignments[$region] = $collegeIds;
+        }
+
+        return [
+            'regions' => $regions,
+            'course_conversions' => $courseConversions,
+            'specialization_overrides' => $specializationOverrides,
+            'college_ids' => $collegeIds,
+            'colleges' => $selectedCollegeNames,
+            'assignments' => $this->normalizeAssignments($assignments),
+            'detected_courses' => array_values($detectedCourses),
+            'converted_courses' => array_values($convertedCourses),
+            'specializations' => array_values($specializations),
+            'preview_rows' => $previewRows,
+            'api_rows' => $apiRows,
+            'total' => count($apiRows),
+        ];
+    }
+
+    private function coursesConvertPreviewOrRedirect(bool $redirectOnMissing = true): array
+    {
+        $preview = $_SESSION['courses_convert_preview'] ?? null;
+
+        if (is_array($preview) && isset($preview['api_rows']) && is_array($preview['api_rows'])) {
             return $preview;
         }
 
         if ($redirectOnMissing) {
-            flash('Generate a preview first to continue the mapping workflow.');
-            redirect('/leads/mapping/region');
+            flash('Confirm the Courses Convert mapping first.');
+            redirect('/leads/mapping/region/courses-convert');
         }
 
-        throw new RuntimeException('Generate preview first.');
+        throw new RuntimeException('Confirm the Courses Convert mapping first.');
     }
 
     private function requestJsonPayload(): array
@@ -1866,44 +2097,18 @@ final class DashboardController
         return $value;
     }
 
-    private function regionAssignmentsFromPreview(array $preview): array
+    private function normalizeScheduleTime(mixed $value): ?string
     {
-        $sessionAssignments = $_SESSION['region_assignments'] ?? null;
-        if (is_array($sessionAssignments)) {
-            return $this->normalizeAssignments($sessionAssignments);
+        $time = trim((string) ($value ?? ''));
+        if ($time === '') {
+            return null;
         }
 
-        return $this->deriveAssignmentsFromPreview(
-            (array) ($preview['regions'] ?? []),
-            (array) ($preview['college_ids'] ?? [])
-        );
-    }
-
-    private function deriveAssignmentsFromPreview(array $regions, array $collegeIds): array
-    {
-        $selectedRegions = $this->leadMapping->normalizeRegions($regions);
-        $selectedCollegeIds = $this->leadMapping->normalizeCollegeIds($collegeIds);
-        $assignments = array_fill_keys($this->leadMapping->regions(), []);
-
-        if ($selectedCollegeIds === []) {
-            return $this->normalizeAssignments($assignments);
+        if (preg_match('/^\d{2}:\d{2}$/', $time) !== 1) {
+            throw new RuntimeException('Use HH:MM format for start and end time.');
         }
 
-        $catalogByRegion = $this->leadMapping->colleagueCatalogByRegion();
-
-        foreach ($selectedRegions as $region) {
-            $matchingCollegeIds = array_values(array_map(
-                static fn (array $college): string => (string) ($college['id'] ?? ''),
-                array_values(array_filter(
-                    (array) ($catalogByRegion[$region] ?? []),
-                    static fn (array $college): bool => in_array((string) ($college['id'] ?? ''), $selectedCollegeIds, true)
-                ))
-            ));
-
-            $assignments[$region] = $matchingCollegeIds !== [] ? $matchingCollegeIds : $selectedCollegeIds;
-        }
-
-        return $this->normalizeAssignments($assignments);
+        return $time . ':00';
     }
 
     private function normalizeLeadRowsPayload(array $rows): array
@@ -2082,15 +2287,20 @@ final class DashboardController
             'colleges_catalog_attr_json' => '[]',
             'available_columns_attr_json' => '[]',
             'duration_defaults_attr_json' => '[]',
-            'generate_preview_url' => e(app_url('leads/mapping/generate-preview.php')),
-            'preview_page_url' => e(app_url('leads/mapping/mapping-courses-specialization')),
-            'mapping_region_courses_url' => e(app_url('leads/mapping/region/courses-mapping')),
+            'mapping_region_courses_convert_url' => e(app_url('leads/mapping/region/courses-convert')),
             'preview_total_records' => '0',
             'preview_selected_regions' => '',
             'preview_selected_courses' => '',
             'preview_selected_specialization' => '',
             'preview_selected_colleges' => '',
-            'confirm_mapping_url' => e(app_url('leads/mapping/confirm-mapping.php')),
+            'confirm_courses_convert_url' => e(app_url('leads/mapping/region/courses-convert/confirm.php')),
+            'courses_convert_api_duration_url' => e(app_url('leads/mapping/region/courses-convert/api-duration')),
+            'courses_convert_send_url' => e(app_url('leads/mapping/region/courses-convert/send.php')),
+            'courses_convert_preview_rows_attr_json' => '[]',
+            'courses_convert_api_rows_attr_json' => '[]',
+            'courses_convert_regions_attr_json' => '[]',
+            'courses_convert_courses_attr_json' => '[]',
+            'courses_convert_specializations_attr_json' => '[]',
             'confirm_assign_url' => e(app_url('leads/mapping/confirm-assignments.php')),
             'save_duration_url' => e(app_url('leads/mapping/save-duration-settings.php')),
             'mapping_configuration_id' => '0',

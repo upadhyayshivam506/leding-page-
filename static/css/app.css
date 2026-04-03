@@ -1369,6 +1369,12 @@ a {
     padding: 10px 18px;
 }
 
+.leads-action-button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
 .leads-filters-panel {
     padding-top: 28px;
 }
@@ -1455,6 +1461,37 @@ a {
 .leads-filter-message--success {
     background: rgba(21, 185, 124, 0.14);
     color: #d8ffef;
+}
+
+.leads-select-column {
+    width: 68px;
+    min-width: 68px;
+    text-align: center;
+}
+
+.leads-row-checkbox {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    accent-color: #a66dff;
+    cursor: pointer;
+}
+
+.leads-send-college-modal__dialog {
+    width: min(620px, 100%);
+}
+
+.leads-send-college-modal__body {
+    gap: 16px;
+}
+
+.leads-send-college-select {
+    width: 100%;
+    min-height: 240px;
+}
+
+.leads-send-college-modal__hint {
+    margin: -4px 0 0;
 }
 
 .lead-upload-progress-panel {
@@ -1772,6 +1809,7 @@ a {
 
 .mapping-region-page,
 .mapping-course-page,
+.mapping-course-convert-page,
 .assignment-page {
     display: grid;
     gap: 24px;
@@ -1806,7 +1844,8 @@ a {
 }
 
 .mapping-region-page > .mapping-actions--footer .btn,
-.mapping-course-page > .mapping-actions--footer .btn {
+.mapping-course-page > .mapping-actions--footer .btn,
+.mapping-course-convert-page > .mapping-actions--footer .btn {
     min-width: 220px;
 }
 
@@ -1814,6 +1853,52 @@ a {
     display: grid;
     gap: 22px;
     padding: 0 32px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mapping-course-convert-grid {
+    display: grid;
+    gap: 22px;
+    padding: 0 32px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mapping-convert-table-wrap {
+    max-height: 340px;
+    overflow: auto;
+    border-radius: 18px;
+}
+
+.mapping-inline-input {
+    margin-top: 0;
+}
+
+.mapping-convert-preview-panel {
+    margin: 0 32px;
+}
+
+.mapping-convert-table-tools {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 180px;
+    gap: 16px;
+    padding: 0 24px 18px;
+}
+
+.mapping-convert-preview-scroll {
+    max-height: 460px;
+    overflow: auto;
+}
+
+.mapping-convert-pagination {
+    padding: 18px 24px 24px;
+}
+
+.mapping-convert-duration-page {
+    display: grid;
+    gap: 24px;
+}
+
+.mapping-convert-duration-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
@@ -2127,16 +2212,19 @@ a {
     .mapping-region-section-head,
     .assignment-page__message,
     .assignment-grid,
+    .mapping-course-convert-grid,
     .mapping-course-page__body,
     .mapping-actions--footer,
     .assignment-success,
-    .assignment-duration-panel {
+    .assignment-duration-panel,
+    .mapping-convert-preview-panel {
         padding-left: 22px;
         padding-right: 22px;
     }
 
     .mapping-region-page > .mapping-actions--footer .btn,
-    .mapping-course-page > .mapping-actions--footer .btn {
+    .mapping-course-page > .mapping-actions--footer .btn,
+    .mapping-course-convert-page > .mapping-actions--footer .btn {
         width: 100%;
         min-width: 0;
     }
@@ -2498,6 +2586,7 @@ body.modal-is-open {
         grid-template-columns: 1fr;
     }
 
+    .mapping-course-convert-grid,
     .mapping-course-page__body {
         grid-template-columns: 1fr;
     }
@@ -2542,6 +2631,11 @@ body.modal-is-open {
     .mapping-course-page__action-row .btn {
         width: 100%;
     }
+
+    .mapping-convert-table-tools,
+    .mapping-convert-duration-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 @media (max-width: 575.98px) {
@@ -2549,9 +2643,12 @@ body.modal-is-open {
     .mapping-region-summary,
     .region-groups,
     .mapping-region-section-head,
+    .mapping-course-convert-grid,
     .mapping-course-page__body,
     .mapping-region-page > .mapping-actions--footer,
-    .mapping-course-page > .mapping-actions--footer {
+    .mapping-course-page > .mapping-actions--footer,
+    .mapping-course-convert-page > .mapping-actions--footer,
+    .mapping-convert-preview-panel {
         padding-left: 18px;
         padding-right: 18px;
     }

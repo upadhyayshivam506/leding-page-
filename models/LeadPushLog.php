@@ -17,7 +17,7 @@ final class LeadPushLog
     public function all(): array
     {
         $statement = Database::connection()->query(
-            'SELECT id, batch_id, lead_id, name, email, phone, course, specialization, campus, college_name, city, state, region, source_file, status, response, attempt_no, created_at
+            'SELECT id, batch_id, lead_id, name, email, COALESCE(mobile, phone) AS phone, course, specialization, campus, college_name, api_url, city, state, region, source_file, status, response, attempt_no, created_at
              FROM lead_api_logs
              ORDER BY created_at DESC, id DESC'
         );
@@ -30,7 +30,7 @@ final class LeadPushLog
     public function paginate(int $limit, int $offset): array
     {
         $statement = Database::connection()->prepare(
-            'SELECT id, batch_id, lead_id, name, email, phone, course, specialization, campus, college_name, city, state, region, source_file, status, response, attempt_no, created_at
+            'SELECT id, batch_id, lead_id, name, email, COALESCE(mobile, phone) AS phone, course, specialization, campus, college_name, api_url, city, state, region, source_file, status, response, attempt_no, created_at
              FROM lead_api_logs
              ORDER BY created_at DESC, id DESC
              LIMIT :limit OFFSET :offset'
@@ -47,7 +47,7 @@ final class LeadPushLog
     public function findByBatch(string $batchId): array
     {
         $statement = Database::connection()->prepare(
-            'SELECT id, batch_id, lead_id, name, email, phone, course, specialization, campus, college_name, city, state, region, source_file, status, response, attempt_no, created_at
+            'SELECT id, batch_id, lead_id, name, email, COALESCE(mobile, phone) AS phone, course, specialization, campus, college_name, api_url, city, state, region, source_file, status, response, attempt_no, created_at
              FROM lead_api_logs
              WHERE batch_id = :batch_id
              ORDER BY created_at DESC, id DESC'
